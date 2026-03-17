@@ -6,7 +6,7 @@ Add shortcut-backed tag search to `remindctl` with a stable JSON query contract,
 
 ## Current State
 
-- The shipped helper shortcut name is `remindctl: Search Reminders By Tag with JSON Output`.
+- The shipped helper shortcut name is `remindctl - Search Reminders By Tag with JSON Output`.
 - The shortcut now accepts JSON on stdin and writes JSON results to a caller-provided output file.
 - `remindctl` currently only needs tag search, but the query contract is being shaped for richer AND-combined filters later.
 
@@ -16,7 +16,7 @@ Working invocation:
 
 ```bash
 printf '{ "tags": ["active-project"] }' \
-  | shortcuts run "remindctl: Search Reminders By Tag with JSON Output" \
+  | shortcuts run "remindctl - Search Reminders By Tag with JSON Output" \
       --output-path output.txt
 ```
 

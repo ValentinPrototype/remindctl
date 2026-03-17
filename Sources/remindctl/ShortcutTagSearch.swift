@@ -281,7 +281,7 @@ private enum ShortcutRunFilesFactory {
 }
 
 enum ShortcutTagSearch {
-  static let shortcutName = "remindctl: Search Reminders By Tag with JSON Output"
+  static let shortcutName = "remindctl - Search Reminders By Tag with JSON Output"
 
   static func search(tag rawTag: String) throws -> [ShortcutTagReminder] {
     try search(tags: [rawTag])

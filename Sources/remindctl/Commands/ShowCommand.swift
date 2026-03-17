@@ -27,7 +27,7 @@ enum ShowCommand {
             .make(
               label: "tag",
               names: [.long("tag")],
-              help: "Search by tag via the bundled Shortcuts helper",
+              help: "Search by tag via the bundled Shortcuts helper (repeatable)",
               parsing: .singleValue
             )
           ]
@@ -40,17 +40,18 @@ enum ShowCommand {
         "remindctl show 2026-01-04",
         "remindctl show --list Work",
         "remindctl show --tag active-project",
+        "remindctl show --tag active-project --tag area-work",
         "remindctl show completed --tag active-project",
       ]
     ) { values, runtime in
       let listName = values.option("list")
-      let tagName = values.option("tag")
+      let tagNames = values.optionValues("tag")
       let filterToken = values.argument(0)
 
-      let filter = try resolveFilter(filterToken: filterToken, tagName: tagName)
+      let filter = try resolveFilter(filterToken: filterToken, tagNames: tagNames)
 
-      if let tagName {
-        let reminders = try ShortcutTagSearch.search(tag: tagName)
+      if !tagNames.isEmpty {
+        let reminders = try ShortcutTagSearch.search(tags: tagNames)
         let inScope = if let listName {
           reminders.filter { $0.listName == listName }
         } else {
@@ -69,7 +70,7 @@ enum ShowCommand {
     }
   }
 
-  static func resolveFilter(filterToken: String?, tagName: String?) throws -> ReminderFilter {
+  static func resolveFilter(filterToken: String?, tagNames: [String]) throws -> ReminderFilter {
     if let token = filterToken {
       guard let parsed = ReminderFiltering.parse(token) else {
         throw RemindCoreError.operationFailed("Unknown filter: \"\(token)\"")
@@ -77,7 +78,7 @@ enum ShowCommand {
       return parsed
     }
 
-    if tagName != nil {
+    if !tagNames.isEmpty {
       return .all
     }
 

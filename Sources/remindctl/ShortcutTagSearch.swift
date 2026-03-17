@@ -6,6 +6,7 @@ struct ShortcutTagSearchPayload: Codable, Sendable, Equatable {
   let count: Int
   let request: String
   let data: [ShortcutTagReminder]
+  let errorMessage: String?
 }
 
 struct ShortcutTagReminder: Codable, Sendable, Equatable, ReminderFilteringItem {
@@ -197,9 +198,69 @@ struct ShortcutTagReminder: Codable, Sendable, Equatable, ReminderFilteringItem 
   }
 }
 
+struct ShortcutSearchQueryV1: Encodable, Sendable, Equatable {
+  let schemaVersion: Int
+  let filters: Filters
+  let tags: [String]
+
+  init(tagsAll: [String]) {
+    schemaVersion = 1
+    filters = Filters(tagsAll: tagsAll)
+    tags = tagsAll
+  }
+
+  struct Filters: Encodable, Sendable, Equatable {
+    let tagsAll: [String]?
+    let isCompleted: Bool?
+    let isFlagged: Bool?
+    let priority: Priority?
+    let hasSubtasks: Bool?
+    let date: [DatePredicate]?
+
+    init(
+      tagsAll: [String]? = nil,
+      isCompleted: Bool? = nil,
+      isFlagged: Bool? = nil,
+      priority: Priority? = nil,
+      hasSubtasks: Bool? = nil,
+      date: [DatePredicate]? = nil
+    ) {
+      self.tagsAll = tagsAll
+      self.isCompleted = isCompleted
+      self.isFlagged = isFlagged
+      self.priority = priority
+      self.hasSubtasks = hasSubtasks
+      self.date = date
+    }
+  }
+
+  enum Priority: String, Codable, Sendable, Equatable {
+    case high
+    case medium
+    case low
+  }
+
+  struct DatePredicate: Encodable, Sendable, Equatable {
+    let field: Field
+    let op: Operation
+    let value: String
+
+    enum Field: String, Codable, Sendable, Equatable {
+      case createdAt
+      case completedAt
+      case dueAt
+      case updatedAt
+    }
+
+    enum Operation: String, Codable, Sendable, Equatable {
+      case before
+      case after
+    }
+  }
+}
+
 private struct ShortcutRunFiles {
   let directoryURL: URL
-  let inputURL: URL
   let outputURL: URL
 }
 
@@ -214,7 +275,6 @@ private enum ShortcutRunFilesFactory {
 
     return ShortcutRunFiles(
       directoryURL: runDirectoryURL,
-      inputURL: runDirectoryURL.appendingPathComponent("input.txt"),
       outputURL: runDirectoryURL.appendingPathComponent("output.txt")
     )
   }
@@ -224,23 +284,23 @@ enum ShortcutTagSearch {
   static let shortcutName = "remindctl: Search Reminders By Tag with JSON Output"
 
   static func search(tag rawTag: String) throws -> [ShortcutTagReminder] {
-    let tag = try normalizeTag(rawTag)
+    try search(tags: [rawTag])
+  }
+
+  static func search(tags rawTags: [String]) throws -> [ShortcutTagReminder] {
+    let tags = try normalizeTags(rawTags)
+    let query = makeQuery(tags: tags)
+    let encodedQuery = try encodeQuery(query)
+
     let runFiles = try ShortcutRunFilesFactory.make()
     defer {
       try? FileManager.default.removeItem(at: runFiles.directoryURL)
     }
 
-    try tag.write(to: runFiles.inputURL, atomically: true, encoding: .utf8)
-
     let result = try ProcessExecutor.run(
-      executableURL: URL(fileURLWithPath: "/bin/sh"),
-      arguments: [
-        "-c",
-        osascriptShellCommand(
-          inputPath: runFiles.inputURL.path,
-          outputPath: runFiles.outputURL.path
-        ),
-      ]
+      executableURL: URL(fileURLWithPath: "/usr/bin/shortcuts"),
+      arguments: shortcutsArguments(outputPath: runFiles.outputURL.path),
+      stdin: encodedQuery
     )
 
     if result.status != 0 {
@@ -255,8 +315,9 @@ enum ShortcutTagSearch {
 
     let payload = try decodePayload(from: String(contentsOf: runFiles.outputURL, encoding: .utf8))
     guard payload.success else {
+      let detail = payload.errorMessage ?? "unknown error"
       throw RemindCoreError.operationFailed(
-        "Shortcut \"\(shortcutName)\" reported failure. Reinstall the bundled .shortcut file and see the README."
+        "Shortcut \"\(shortcutName)\" reported failure: \(detail). Reinstall the bundled .shortcut file and see the README."
       )
     }
     guard payload.count == payload.data.count else {
@@ -266,14 +327,6 @@ enum ShortcutTagSearch {
     }
 
     return payload.data
-  }
-
-  private static func appleScriptStringLiteral(_ value: String) -> String {
-    "\"\(value)\""
-  }
-
-  private static func shellSingleQuote(_ value: String) -> String {
-    "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
   }
 
   static func normalizeTag(_ rawTag: String) throws -> String {
@@ -293,31 +346,32 @@ enum ShortcutTagSearch {
     return tag.lowercased()
   }
 
-  static func shortcutsArguments(inputPath: String, outputPath: String) -> [String] {
+  static func normalizeTags(_ rawTags: [String]) throws -> [String] {
+    let tags = try rawTags.map(normalizeTag)
+    guard !tags.isEmpty else {
+      throw RemindCoreError.operationFailed("At least one tag is required for --tag searches.")
+    }
+    return tags
+  }
+
+  static func makeQuery(tags: [String]) -> ShortcutSearchQueryV1 {
+    ShortcutSearchQueryV1(tagsAll: tags)
+  }
+
+  static func encodeQuery(_ query: ShortcutSearchQueryV1) throws -> String {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let data = try encoder.encode(query)
+    return String(decoding: data, as: UTF8.self)
+  }
+
+  static func shortcutsArguments(outputPath: String) -> [String] {
     [
       "run",
       shortcutName,
-      "--input-path",
-      inputPath,
       "--output-path",
       outputPath,
     ]
-  }
-
-  static func osascriptArguments(inputPath: String, outputPath: String) -> [String] {
-    [
-      "-e", "set shortcutName to \(appleScriptStringLiteral(shortcutName))",
-      "-e", "set inputPath to \(appleScriptStringLiteral(inputPath))",
-      "-e", "set outputPath to \(appleScriptStringLiteral(outputPath))",
-      "-e", "set cmd to \"shortcuts run \" & quoted form of shortcutName & \" --input-path \" & quoted form of inputPath & \" --output-path \" & quoted form of outputPath",
-      "-e", "do shell script cmd",
-    ]
-  }
-
-  static func osascriptShellCommand(inputPath: String, outputPath: String) -> String {
-    (["osascript"] + osascriptArguments(inputPath: inputPath, outputPath: outputPath))
-      .map(shellSingleQuote)
-      .joined(separator: " ")
   }
 
   static func decodePayload(from rawOutput: String) throws -> ShortcutTagSearchPayload {

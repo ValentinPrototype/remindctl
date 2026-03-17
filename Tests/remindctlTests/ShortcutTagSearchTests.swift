@@ -19,51 +19,50 @@ struct ShortcutTagSearchTests {
     }
   }
 
+  @Test("Normalize rejects empty tag lists")
+  func rejectEmptyTagList() {
+    #expect(throws: Error.self) {
+      try ShortcutTagSearch.normalizeTags([])
+    }
+  }
+
+  @Test("Encode single-tag versioned query")
+  func encodeSingleTagQuery() throws {
+    let normalizedTags = try ShortcutTagSearch.normalizeTags(["#active-project"])
+    let query = ShortcutTagSearch.makeQuery(tags: normalizedTags)
+    let rawQuery = try ShortcutTagSearch.encodeQuery(query)
+    let object = try JSONSerialization.jsonObject(with: Data(rawQuery.utf8)) as? [String: Any]
+    let filters = object?["filters"] as? [String: Any]
+
+    #expect(object?["schemaVersion"] as? Int == 1)
+    #expect(filters?["tagsAll"] as? [String] == ["active-project"])
+    #expect(object?["tags"] as? [String] == ["active-project"])
+  }
+
+  @Test("Encode repeated tags in normalized input order")
+  func encodeRepeatedTags() throws {
+    let normalizedTags = try ShortcutTagSearch.normalizeTags(["#Area-Work", "active-project"])
+    let query = ShortcutTagSearch.makeQuery(tags: normalizedTags)
+    let rawQuery = try ShortcutTagSearch.encodeQuery(query)
+    let object = try JSONSerialization.jsonObject(with: Data(rawQuery.utf8)) as? [String: Any]
+    let filters = object?["filters"] as? [String: Any]
+
+    #expect(filters?["tagsAll"] as? [String] == ["area-work", "active-project"])
+    #expect(object?["tags"] as? [String] == ["area-work", "active-project"])
+  }
+
   @Test("Build shortcuts run invocation")
   func shortcutsInvocation() {
-    let args = ShortcutTagSearch.shortcutsArguments(
-      inputPath: "/workspace/input.txt",
-      outputPath: "/workspace/output.txt"
-    )
+    let args = ShortcutTagSearch.shortcutsArguments(outputPath: "/workspace/output.txt")
 
     #expect(
       args == [
         "run",
         "remindctl: Search Reminders By Tag with JSON Output",
-        "--input-path",
-        "/workspace/input.txt",
         "--output-path",
         "/workspace/output.txt",
       ]
     )
-  }
-
-  @Test("Wrap shortcut command for AppleScript transport")
-  func osascriptInvocation() {
-    let args = ShortcutTagSearch.osascriptArguments(
-      inputPath: "/workspace/input.txt",
-      outputPath: "/workspace/output.txt"
-    )
-
-    #expect(args.count == 10)
-    #expect(args[0] == "-e")
-    #expect(args[1].contains("set shortcutName"))
-    #expect(args[3].contains("set inputPath"))
-    #expect(args[5].contains("set outputPath"))
-    #expect(args[7].contains("set cmd to"))
-    #expect(args[9] == "do shell script cmd")
-  }
-
-  @Test("Wrap AppleScript transport in a shell command")
-  func osascriptShellInvocation() {
-    let command = ShortcutTagSearch.osascriptShellCommand(
-      inputPath: "/workspace/input.txt",
-      outputPath: "/workspace/output.txt"
-    )
-
-    #expect(command.contains("'osascript'"))
-    #expect(command.contains("'set shortcutName to "))
-    #expect(command.contains("'do shell script cmd'"))
   }
 
   @Test("Decode shortcut payload JSON")

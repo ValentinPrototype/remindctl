@@ -7,17 +7,25 @@ struct ProcessResult: Sendable, Equatable {
 }
 
 enum ProcessExecutor {
-  static func run(executableURL: URL, arguments: [String]) throws -> ProcessResult {
+  static func run(executableURL: URL, arguments: [String], stdin: String? = nil) throws -> ProcessResult {
     let process = Process()
     process.executableURL = executableURL
     process.arguments = arguments
 
+    let stdinPipe = Pipe()
     let stdoutPipe = Pipe()
     let stderrPipe = Pipe()
+    process.standardInput = stdinPipe
     process.standardOutput = stdoutPipe
     process.standardError = stderrPipe
 
     try process.run()
+
+    if let stdin {
+      stdinPipe.fileHandleForWriting.write(Data(stdin.utf8))
+    }
+    try? stdinPipe.fileHandleForWriting.close()
+
     process.waitUntilExit()
 
     let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()

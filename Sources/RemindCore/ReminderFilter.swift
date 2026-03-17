@@ -11,6 +11,14 @@ public enum ReminderFilter: Equatable, Sendable {
   case all
 }
 
+public protocol ReminderFilteringItem {
+  var title: String { get }
+  var isCompleted: Bool { get }
+  var dueDate: Date? { get }
+}
+
+extension ReminderItem: ReminderFilteringItem {}
+
 public enum ReminderFiltering {
   public static func parse(_ input: String, now: Date = Date(), calendar: Calendar = .current) -> ReminderFilter? {
     let token = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -37,12 +45,12 @@ public enum ReminderFiltering {
     }
   }
 
-  public static func apply(
-    _ reminders: [ReminderItem],
+  public static func apply<T: ReminderFilteringItem>(
+    _ reminders: [T],
     filter: ReminderFilter,
     now: Date = Date(),
     calendar: Calendar = .current
-  ) -> [ReminderItem] {
+  ) -> [T] {
     let startOfToday = calendar.startOfDay(for: now)
     let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday
     let startOfDayAfterTomorrow =
@@ -88,7 +96,7 @@ public enum ReminderFiltering {
     }
   }
 
-  public static func sort(_ reminders: [ReminderItem]) -> [ReminderItem] {
+  public static func sort<T: ReminderFilteringItem>(_ reminders: [T]) -> [T] {
     reminders.sorted { lhs, rhs in
       switch (lhs.dueDate, rhs.dueDate) {
       case (nil, nil):

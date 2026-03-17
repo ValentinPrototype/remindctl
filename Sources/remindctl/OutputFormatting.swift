@@ -119,6 +119,14 @@ enum OutputRenderer {
     renderRemindersPlain(reminders)
   }
 
+  static func renderReminderItemsStandard(_ reminders: [ReminderItem]) -> [String] {
+    renderRemindersStandard(reminders)
+  }
+
+  static func renderReminderItemsPlain(_ reminders: [ReminderItem]) -> [String] {
+    renderRemindersPlain(reminders)
+  }
+
   private static func renderRemindersStandard<T: ReminderDisplayItem>(_ reminders: [T]) -> [String] {
     let sorted = ReminderFiltering.sort(reminders)
     guard !sorted.isEmpty else {

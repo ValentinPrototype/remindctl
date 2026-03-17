@@ -97,24 +97,19 @@ public actor RemindersStore {
     let calendar = try calendar(named: listName)
     let reminder = EKReminder(eventStore: eventStore)
     reminder.title = draft.title
-    reminder.notes = draft.notes
+    reminder.notes = ReminderTags.append(draft.tags, toNotes: draft.notes, title: draft.title)
     reminder.calendar = calendar
     reminder.priority = draft.priority.eventKitValue
     if let dueDate = draft.dueDate {
       reminder.dueDateComponents = calendarComponents(from: dueDate)
     }
+    if let startDate = draft.startDate {
+      reminder.startDateComponents = calendarComponents(from: startDate)
+    }
+    reminder.location = draft.location
+    reminder.url = draft.url
     try eventStore.save(reminder, commit: true)
-    return ReminderItem(
-      id: reminder.calendarItemIdentifier,
-      title: reminder.title ?? "",
-      notes: reminder.notes,
-      isCompleted: reminder.isCompleted,
-      completionDate: reminder.completionDate,
-      priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
-      dueDate: date(from: reminder.dueDateComponents),
-      listID: reminder.calendar.calendarIdentifier,
-      listName: reminder.calendar.title
-    )
+    return item(from: reminder)
   }
 
   public func updateReminder(id: String, update: ReminderUpdate) async throws -> ReminderItem {
@@ -133,8 +128,24 @@ public actor RemindersStore {
         reminder.dueDateComponents = nil
       }
     }
+    if let startDateUpdate = update.startDate {
+      if let startDate = startDateUpdate {
+        reminder.startDateComponents = calendarComponents(from: startDate)
+      } else {
+        reminder.startDateComponents = nil
+      }
+    }
+    if let locationUpdate = update.location {
+      reminder.location = locationUpdate
+    }
+    if let urlUpdate = update.url {
+      reminder.url = urlUpdate
+    }
     if let priority = update.priority {
       reminder.priority = priority.eventKitValue
+    }
+    if let tags = update.tags {
+      reminder.notes = ReminderTags.append(tags, toNotes: reminder.notes, title: reminder.title ?? "")
     }
     if let listName = update.listName {
       reminder.calendar = try calendar(named: listName)
@@ -145,17 +156,7 @@ public actor RemindersStore {
 
     try eventStore.save(reminder, commit: true)
 
-    return ReminderItem(
-      id: reminder.calendarItemIdentifier,
-      title: reminder.title ?? "",
-      notes: reminder.notes,
-      isCompleted: reminder.isCompleted,
-      completionDate: reminder.completionDate,
-      priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
-      dueDate: date(from: reminder.dueDateComponents),
-      listID: reminder.calendar.calendarIdentifier,
-      listName: reminder.calendar.title
-    )
+    return item(from: reminder)
   }
 
   public func completeReminders(ids: [String]) async throws -> [ReminderItem] {
@@ -164,19 +165,7 @@ public actor RemindersStore {
       let reminder = try reminder(withID: id)
       reminder.isCompleted = true
       try eventStore.save(reminder, commit: true)
-      updated.append(
-        ReminderItem(
-          id: reminder.calendarItemIdentifier,
-          title: reminder.title ?? "",
-          notes: reminder.notes,
-          isCompleted: reminder.isCompleted,
-          completionDate: reminder.completionDate,
-          priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
-          dueDate: date(from: reminder.dueDateComponents),
-          listID: reminder.calendar.calendarIdentifier,
-          listName: reminder.calendar.title
-        )
-      )
+      updated.append(item(from: reminder))
     }
     return updated
   }
@@ -212,6 +201,13 @@ public actor RemindersStore {
       let completionDate: Date?
       let priority: Int
       let dueDateComponents: DateComponents?
+      let startDateComponents: DateComponents?
+      let location: String?
+      let url: URL?
+      let creationDate: Date?
+      let lastModifiedDate: Date?
+      let hasAlarms: Bool
+      let hasRecurrenceRules: Bool
       let listID: String
       let listName: String
     }
@@ -228,6 +224,13 @@ public actor RemindersStore {
             completionDate: reminder.completionDate,
             priority: Int(reminder.priority),
             dueDateComponents: reminder.dueDateComponents,
+            startDateComponents: reminder.startDateComponents,
+            location: reminder.location,
+            url: reminder.url,
+            creationDate: reminder.creationDate,
+            lastModifiedDate: reminder.lastModifiedDate,
+            hasAlarms: reminder.hasAlarms,
+            hasRecurrenceRules: reminder.hasRecurrenceRules,
             listID: reminder.calendar.calendarIdentifier,
             listName: reminder.calendar.title
           )
@@ -245,6 +248,14 @@ public actor RemindersStore {
         completionDate: data.completionDate,
         priority: ReminderPriority(eventKitValue: data.priority),
         dueDate: date(from: data.dueDateComponents),
+        startDate: date(from: data.startDateComponents),
+        location: data.location,
+        url: data.url,
+        creationDate: data.creationDate,
+        lastModifiedDate: data.lastModifiedDate,
+        hasAlarms: data.hasAlarms,
+        hasRecurrenceRules: data.hasRecurrenceRules,
+        tags: ReminderTags.extract(title: data.title, notes: data.notes),
         listID: data.listID,
         listName: data.listName
       )
@@ -284,6 +295,14 @@ public actor RemindersStore {
       completionDate: reminder.completionDate,
       priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
       dueDate: date(from: reminder.dueDateComponents),
+      startDate: date(from: reminder.startDateComponents),
+      location: reminder.location,
+      url: reminder.url,
+      creationDate: reminder.creationDate,
+      lastModifiedDate: reminder.lastModifiedDate,
+      hasAlarms: reminder.hasAlarms,
+      hasRecurrenceRules: reminder.hasRecurrenceRules,
+      tags: ReminderTags.extract(title: reminder.title ?? "", notes: reminder.notes),
       listID: reminder.calendar.calendarIdentifier,
       listName: reminder.calendar.title
     )

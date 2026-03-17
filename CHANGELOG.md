@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+- Add reminder tags support via `--tag` (stored as hashtags in notes/title)
+- Add metadata fields to reminders: start date, location, URL, created/modified timestamps, alarms, recurrence
+- Extend `add` and `edit` with metadata options (`--start`, `--location`, `--url`, clear flags)
+
 ## 0.1.1 - 2026-01-11
 - Fix Swift 6 strict concurrency crash when fetching reminders
 

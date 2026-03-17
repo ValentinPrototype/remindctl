@@ -17,7 +17,11 @@ enum AddCommand {
             .make(label: "title", names: [.long("title")], help: "Reminder title", parsing: .singleValue),
             .make(label: "list", names: [.short("l"), .long("list")], help: "List name", parsing: .singleValue),
             .make(label: "due", names: [.short("d"), .long("due")], help: "Due date", parsing: .singleValue),
+            .make(label: "start", names: [.short("s"), .long("start")], help: "Start date", parsing: .singleValue),
             .make(label: "notes", names: [.short("n"), .long("notes")], help: "Notes", parsing: .singleValue),
+            .make(label: "location", names: [.long("location")], help: "Location", parsing: .singleValue),
+            .make(label: "url", names: [.long("url")], help: "Reference URL", parsing: .singleValue),
+            .make(label: "tag", names: [.long("tag")], help: "Tag (repeatable)", parsing: .singleValue),
             .make(
               label: "priority",
               names: [.short("p"), .long("priority")],
@@ -31,6 +35,7 @@ enum AddCommand {
         "remindctl add \"Buy milk\"",
         "remindctl add --title \"Call mom\" --list Personal --due tomorrow",
         "remindctl add \"Review docs\" --priority high",
+        "remindctl add \"Plan trip\" --tag travel --tag family --url https://example.com",
       ]
     ) { values, runtime in
       let titleOption = values.option("title")
@@ -55,9 +60,16 @@ enum AddCommand {
       let listName = values.option("list")
       let notes = values.option("notes")
       let dueValue = values.option("due")
+      let startValue = values.option("start")
+      let location = values.option("location")
+      let urlValue = values.option("url")
+      let tagValues = values.optionValues("tag")
       let priorityValue = values.option("priority")
 
       let dueDate = try dueValue.map(CommandHelpers.parseDueDate)
+      let startDate = try startValue.map(CommandHelpers.parseDueDate)
+      let url = try urlValue.map(CommandHelpers.parseURL)
+      let tags = try CommandHelpers.parseTags(tagValues)
       let priority = try priorityValue.map(CommandHelpers.parsePriority) ?? .none
 
       let store = RemindersStore()
@@ -73,7 +85,16 @@ enum AddCommand {
         throw RemindCoreError.operationFailed("No default list found. Specify --list.")
       }
 
-      let draft = ReminderDraft(title: title, notes: notes, dueDate: dueDate, priority: priority)
+      let draft = ReminderDraft(
+        title: title,
+        notes: notes,
+        dueDate: dueDate,
+        startDate: startDate,
+        location: location,
+        url: url,
+        tags: tags,
+        priority: priority
+      )
       let reminder = try await store.createReminder(draft, listName: targetList)
       OutputRenderer.printReminder(reminder, format: runtime.outputFormat)
     }

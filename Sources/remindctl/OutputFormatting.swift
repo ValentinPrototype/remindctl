@@ -51,7 +51,9 @@ enum OutputRenderer {
     switch format {
     case .standard:
       let due = reminder.dueDate.map { DateParsing.formatDisplay($0) } ?? "no due date"
-      Swift.print("✓ \(reminder.title) [\(reminder.listName)] — \(due)")
+      let details = detailSegments(for: reminder)
+      let suffix = details.isEmpty ? "" : " " + details.joined(separator: " ")
+      Swift.print("✓ \(reminder.title) [\(reminder.listName)] — \(due)\(suffix)")
     case .plain:
       Swift.print(plainLine(for: reminder))
     case .json:
@@ -97,8 +99,9 @@ enum OutputRenderer {
     for (index, reminder) in sorted.enumerated() {
       let status = reminder.isCompleted ? "x" : " "
       let due = reminder.dueDate.map { DateParsing.formatDisplay($0) } ?? "no due date"
-      let priority = reminder.priority == .none ? "" : " priority=\(reminder.priority.rawValue)"
-      Swift.print("[\(index + 1)] [\(status)] \(reminder.title) [\(reminder.listName)] — \(due)\(priority)")
+      let details = detailSegments(for: reminder)
+      let suffix = details.isEmpty ? "" : " " + details.joined(separator: " ")
+      Swift.print("[\(index + 1)] [\(status)] \(reminder.title) [\(reminder.listName)] — \(due)\(suffix)")
     }
   }
 
@@ -111,14 +114,56 @@ enum OutputRenderer {
 
   private static func plainLine(for reminder: ReminderItem) -> String {
     let due = reminder.dueDate.map { isoFormatter().string(from: $0) } ?? ""
+    let start = reminder.startDate.map { isoFormatter().string(from: $0) } ?? ""
+    let url = reminder.url?.absoluteString ?? ""
+    let created = reminder.creationDate.map { isoFormatter().string(from: $0) } ?? ""
+    let modified = reminder.lastModifiedDate.map { isoFormatter().string(from: $0) } ?? ""
+    let tags = reminder.tags.joined(separator: ",")
     return [
       reminder.id,
       reminder.listName,
       reminder.isCompleted ? "1" : "0",
       reminder.priority.rawValue,
       due,
+      start,
+      reminder.location ?? "",
+      url,
+      reminder.hasAlarms ? "1" : "0",
+      reminder.hasRecurrenceRules ? "1" : "0",
+      created,
+      modified,
+      tags,
       reminder.title,
     ].joined(separator: "\t")
+  }
+
+  private static func detailSegments(for reminder: ReminderItem) -> [String] {
+    var details: [String] = []
+
+    if reminder.priority != .none {
+      details.append("priority=\(reminder.priority.rawValue)")
+    }
+    if !reminder.tags.isEmpty {
+      let tagText = reminder.tags.map { "#\($0)" }.joined(separator: ",")
+      details.append("tags=\(tagText)")
+    }
+    if let startDate = reminder.startDate {
+      details.append("start=\(DateParsing.formatDisplay(startDate))")
+    }
+    if let location = reminder.location, !location.isEmpty {
+      details.append("location=\"\(location)\"")
+    }
+    if let url = reminder.url {
+      details.append("url=\(url.absoluteString)")
+    }
+    if reminder.hasAlarms {
+      details.append("alarms=1")
+    }
+    if reminder.hasRecurrenceRules {
+      details.append("recurring=1")
+    }
+
+    return details
   }
 
   private static func printListsStandard(_ summaries: [ListSummary]) {

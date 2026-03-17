@@ -29,6 +29,28 @@ make check                     # lint + test + coverage gate
 - Swift 6.2+
 - Reminders permission (System Settings → Privacy & Security → Reminders)
 
+## Tag Search Setup
+Tag search is powered by an Apple Shortcut helper. The shortcut must be installed in the
+Shortcuts app with this exact name:
+
+`remindctl - Search Reminders By Tag with JSON Output`
+
+Install steps:
+- Open `remindctl - Search Reminders By Tag with JSON Output.shortcut` in Finder, or drag it into the Shortcuts app.
+- Click `Add Shortcut` when macOS asks to import it.
+- Do not rename the shortcut after import.
+
+Once installed, tag search works like this:
+
+```bash
+remindctl show --tag active-project
+remindctl show --tag active-project --tag area-work
+remindctl show completed --tag active-project
+```
+
+If the shortcut is missing or renamed, `remindctl` fails with a setup error explaining that
+the helper shortcut is required for `--tag` searches.
+
 ## Usage
 ```bash
 remindctl                      # show today (default)

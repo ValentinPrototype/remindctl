@@ -65,6 +65,20 @@ public actor RemindersStore {
     return await fetchReminders(in: calendars)
   }
 
+  public func nativeReminders(in listName: String? = nil) async throws -> [NativeReminderRecord] {
+    let calendars: [EKCalendar]
+    if let listName {
+      calendars = eventStore.calendars(for: .reminder).filter { $0.title == listName }
+      if calendars.isEmpty {
+        throw RemindCoreError.listNotFound(listName)
+      }
+    } else {
+      calendars = eventStore.calendars(for: .reminder)
+    }
+
+    return await fetchNativeReminders(in: calendars)
+  }
+
   public func createList(name: String) async throws -> ReminderList {
     let list = EKCalendar(for: .reminder, eventStore: eventStore)
     list.title = name
@@ -247,6 +261,75 @@ public actor RemindersStore {
         dueDate: date(from: data.dueDateComponents),
         listID: data.listID,
         listName: data.listName
+      )
+    }
+  }
+
+  private func fetchNativeReminders(in calendars: [EKCalendar]) async -> [NativeReminderRecord] {
+    struct ReminderData: Sendable {
+      let sourceScopeID: String
+      let calendarID: String
+      let listTitle: String
+      let title: String
+      let notes: String?
+      let isCompleted: Bool
+      let completionDate: Date?
+      let priority: Int
+      let dueDateComponents: DateComponents?
+      let createdAt: Date?
+      let updatedAt: Date?
+      let url: String?
+      let nativeCalendarItemIdentifier: String
+      let nativeExternalIdentifier: String?
+    }
+
+    let reminderData = await withCheckedContinuation { (continuation: CheckedContinuation<[ReminderData], Never>) in
+      let predicate = eventStore.predicateForReminders(in: calendars)
+      eventStore.fetchReminders(matching: predicate) { reminders in
+        let data = (reminders ?? []).compactMap { reminder -> ReminderData? in
+          let sourceIdentifier = reminder.calendar.source.sourceIdentifier
+          guard sourceIdentifier.isEmpty == false else {
+            return nil
+          }
+
+          return ReminderData(
+            sourceScopeID: sourceIdentifier,
+            calendarID: reminder.calendar.calendarIdentifier,
+            listTitle: reminder.calendar.title,
+            title: reminder.title ?? "",
+            notes: reminder.notes,
+            isCompleted: reminder.isCompleted,
+            completionDate: reminder.completionDate,
+            priority: Int(reminder.priority),
+            dueDateComponents: reminder.dueDateComponents,
+            createdAt: reminder.creationDate,
+            updatedAt: reminder.lastModifiedDate,
+            url: reminder.url?.absoluteString,
+            nativeCalendarItemIdentifier: reminder.calendarItemIdentifier,
+            nativeExternalIdentifier: reminder.calendarItemExternalIdentifier
+          )
+        }
+        continuation.resume(returning: data)
+      }
+    }
+
+    return reminderData.map { data in
+      NativeReminderRecord(
+        id: data.nativeCalendarItemIdentifier,
+        sourceScopeID: data.sourceScopeID,
+        calendarID: data.calendarID,
+        listTitle: data.listTitle,
+        title: data.title,
+        notes: data.notes,
+        isCompleted: data.isCompleted,
+        completionDate: data.completionDate,
+        priority: ReminderPriority(eventKitValue: data.priority),
+        dueDate: date(from: data.dueDateComponents),
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        url: data.url,
+        nativeCalendarItemIdentifier: data.nativeCalendarItemIdentifier,
+        nativeExternalIdentifier: data.nativeExternalIdentifier
       )
     }
   }

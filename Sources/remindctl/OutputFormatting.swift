@@ -88,6 +88,76 @@ enum OutputRenderer {
     }
   }
 
+  static func printMirrorSyncSummary(_ summary: MirrorSyncSummary, format: OutputFormat) {
+    switch format {
+    case .standard:
+      Swift.print("Mirror updated: \(summary.databasePath)")
+      Swift.print("Native reminders: \(summary.nativeReminderCount)")
+      Swift.print("Canonical reminders: \(summary.canonicalReminderCount)")
+      Swift.print("Unresolved Shortcut items: \(summary.unresolvedShortcutCount)")
+      Swift.print("Contract runs: \(summary.contractRunCount)")
+      Swift.print("Completed at: \(DateParsing.formatDisplay(summary.completedAt))")
+    case .plain:
+      Swift.print(
+        [
+          summary.databasePath,
+          "\(summary.nativeReminderCount)",
+          "\(summary.canonicalReminderCount)",
+          "\(summary.unresolvedShortcutCount)",
+          "\(summary.contractRunCount)",
+          isoFormatter().string(from: summary.completedAt),
+        ].joined(separator: "\t")
+      )
+    case .json:
+      printJSON(summary)
+    case .quiet:
+      Swift.print(summary.canonicalReminderCount)
+    }
+  }
+
+  static func printGTDQueryResult(_ result: GTDQueryResult, format: OutputFormat) {
+    switch format {
+    case .standard:
+      Swift.print("\(result.queryFamily) [\(result.status.rawValue)] confidence=\(result.confidence.rawValue)")
+      if let nativeSyncedAt = result.freshness.nativeSyncedAt {
+        Swift.print("Native sync: \(DateParsing.formatDisplay(nativeSyncedAt))")
+      }
+      if let shortcutGeneratedAt = result.freshness.shortcutGeneratedAt {
+        Swift.print("Shortcut data: \(DateParsing.formatDisplay(shortcutGeneratedAt))")
+      }
+      for warning in result.warnings {
+        Swift.print("Warning: \(warning)")
+      }
+      if result.items.isEmpty {
+        Swift.print("No results found")
+        return
+      }
+      for item in result.items {
+        let due = item.dueAt.map { DateParsing.formatDisplay($0) } ?? "no due date"
+        let semantics = item.matchedSemantics.isEmpty ? "" : " semantics=\(item.matchedSemantics.joined(separator: ","))"
+        Swift.print("[\(item.identityStatus.rawValue)] \(item.title) [\(item.listTitle)] — \(due)\(semantics)")
+      }
+    case .plain:
+      for item in result.items {
+        Swift.print(
+          [
+            item.canonicalID ?? "",
+            item.identityStatus.rawValue,
+            item.listTitle,
+            item.priority.rawValue,
+            item.dueAt.map { isoFormatter().string(from: $0) } ?? "",
+            item.title,
+            item.matchedSemantics.joined(separator: ","),
+          ].joined(separator: "\t")
+        )
+      }
+    case .json:
+      printJSON(result)
+    case .quiet:
+      Swift.print(result.items.count)
+    }
+  }
+
   private static func printRemindersStandard(_ reminders: [ReminderItem]) {
     let sorted = ReminderFiltering.sort(reminders)
     guard !sorted.isEmpty else {

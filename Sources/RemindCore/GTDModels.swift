@@ -32,6 +32,69 @@ public enum GTDDueFilter: String, Codable, Sendable, CaseIterable {
   case none
 }
 
+public enum ValidationGateID: String, Codable, CaseIterable, Sendable {
+  case g1TagVisibility = "G1"
+  case g2HierarchyVisibility = "G2"
+  case g3ShortcutIdentifier = "G3"
+  case g4ExternalIDReliability = "G4"
+  case g5LastModifiedReliability = "G5"
+
+  public var title: String {
+    switch self {
+    case .g1TagVisibility:
+      return "Tag visibility gate"
+    case .g2HierarchyVisibility:
+      return "Hierarchy visibility gate"
+    case .g3ShortcutIdentifier:
+      return "Shortcut identifier gate"
+    case .g4ExternalIDReliability:
+      return "External-ID reliability gate"
+    case .g5LastModifiedReliability:
+      return "Last-modified reliability gate"
+    }
+  }
+
+  public var summary: String {
+    switch self {
+    case .g1TagVisibility:
+      return "Required before tag-based semantic queries may ship."
+    case .g2HierarchyVisibility:
+      return "Required before hierarchy-derived diagnostics may ship."
+    case .g3ShortcutIdentifier:
+      return "Controls whether Shortcut payloads may be promoted into canonical joins."
+    case .g4ExternalIDReliability:
+      return "Controls whether external identifiers may be preferred over local IDs."
+    case .g5LastModifiedReliability:
+      return "Controls whether native updated-at logic may be trusted."
+    }
+  }
+}
+
+public enum ValidationGateState: String, Codable, CaseIterable, Sendable {
+  case pending
+  case passed
+  case failed
+}
+
+public struct ValidationGateRecord: Codable, Sendable, Equatable {
+  public let gateID: ValidationGateID
+  public let state: ValidationGateState
+  public let updatedAt: Date
+  public let evidence: String?
+
+  public init(
+    gateID: ValidationGateID,
+    state: ValidationGateState,
+    updatedAt: Date,
+    evidence: String?
+  ) {
+    self.gateID = gateID
+    self.state = state
+    self.updatedAt = updatedAt
+    self.evidence = evidence
+  }
+}
+
 public enum ShortcutContractID: String, Codable, CaseIterable, Sendable {
   case activeProjects = "shortcut.active_projects.v1"
   case nextActions = "shortcut.next_actions.v1"

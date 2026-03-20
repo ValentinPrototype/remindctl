@@ -158,6 +158,32 @@ enum OutputRenderer {
     }
   }
 
+  static func printValidationGates(_ records: [ValidationGateRecord], format: OutputFormat) {
+    switch format {
+    case .standard:
+      for record in records.sorted(by: { $0.gateID.rawValue < $1.gateID.rawValue }) {
+        let evidence = record.evidence.map { " — \($0)" } ?? ""
+        let updatedAt = record.updatedAt == .distantPast ? "never" : DateParsing.formatDisplay(record.updatedAt)
+        Swift.print("\(record.gateID.rawValue) [\(record.state.rawValue)] \(record.gateID.title) — \(updatedAt)\(evidence)")
+      }
+    case .plain:
+      for record in records.sorted(by: { $0.gateID.rawValue < $1.gateID.rawValue }) {
+        Swift.print(
+          [
+            record.gateID.rawValue,
+            record.state.rawValue,
+            record.updatedAt == .distantPast ? "" : isoFormatter().string(from: record.updatedAt),
+            record.evidence ?? "",
+          ].joined(separator: "\t")
+        )
+      }
+    case .json:
+      printJSON(records)
+    case .quiet:
+      Swift.print(records.count)
+    }
+  }
+
   private static func printRemindersStandard(_ reminders: [ReminderItem]) {
     let sorted = ReminderFiltering.sort(reminders)
     guard !sorted.isEmpty else {

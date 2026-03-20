@@ -4,10 +4,23 @@ import Testing
 @testable import RemindCore
 
 struct GTDMirrorStoreTests {
+  @Test("Semantic queries stay blocked until the tag gate passes")
+  func semanticQueriesRequireTagGate() async throws {
+    let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
+    let now = Date(timeIntervalSince1970: 1_742_472_000)
+
+    let result = try await store.querySemantic(contractID: .activeProjects, now: now)
+    #expect(result.status == .unsupported)
+    #expect(result.warnings.contains(where: { $0.contains("G1") }))
+  }
+
   @Test("Mirror keeps unresolved semantic rows at low confidence")
   func unresolvedSemanticRowsStayLowConfidence() async throws {
     let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
     let now = Date(timeIntervalSince1970: 1_742_472_000)
+
+    _ = try await store.setValidationGate(.g1TagVisibility, state: .passed)
+    _ = try await store.setValidationGate(.g3ShortcutIdentifier, state: .failed)
 
     let native = [
       sampleNativeReminder(
@@ -65,6 +78,9 @@ struct GTDMirrorStoreTests {
   func semanticRowsJoinNativeMirror() async throws {
     let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
     let now = Date(timeIntervalSince1970: 1_742_472_000)
+
+    _ = try await store.setValidationGate(.g1TagVisibility, state: .passed)
+    _ = try await store.setValidationGate(.g3ShortcutIdentifier, state: .passed)
 
     let native = [
       sampleNativeReminder(

@@ -7,11 +7,11 @@ enum QueryCommand {
     CommandSpec(
       name: "query",
       abstract: "Run GTD queries against the local mirror",
-      discussion: "Supports semantic Shortcut-backed slices plus native hygiene queries.",
+      discussion: "Supports semantic Shortcut-backed slices, hierarchy retrieval, and native hygiene queries.",
       signature: CommandSignatures.withRuntimeFlags(
         CommandSignature(
           arguments: [
-            .make(label: "family", help: "active-projects|next-actions|waiting-ons|old-empty-notes|old-vague")
+            .make(label: "family", help: "active-projects|next-actions|waiting-ons|productivity-hierarchy|old-empty-notes|old-vague")
           ],
           options: [
             .make(
@@ -38,6 +38,18 @@ enum QueryCommand {
               help: "Age threshold for stale queries",
               parsing: .singleValue
             ),
+            .make(
+              label: "parentSourceItemID",
+              names: [.long("parent-source-item-id")],
+              help: "Limit hierarchy results to one parent source item",
+              parsing: .singleValue
+            ),
+            .make(
+              label: "parentCanonicalID",
+              names: [.long("parent-canonical-id")],
+              help: "Limit hierarchy results to one parent canonical ID",
+              parsing: .singleValue
+            ),
           ]
         )
       ),
@@ -45,6 +57,7 @@ enum QueryCommand {
         "remindctl query active-projects",
         "remindctl query next-actions --due today",
         "remindctl query waiting-ons --older-than-days 7",
+        "remindctl query productivity-hierarchy --parent-source-item-id shortcut-parent-1",
         "remindctl query old-empty-notes --older-than-days 14",
       ]
     ) { values, runtime in
@@ -81,6 +94,11 @@ enum QueryCommand {
           listTitle: values.option("list"),
           dueFilter: dueFilter,
           olderThanDays: olderThanDays
+        )
+      case "productivity-hierarchy", "hierarchy":
+        result = try await mirror.queryHierarchy(
+          parentSourceItemID: values.option("parentSourceItemID"),
+          parentCanonicalID: values.option("parentCanonicalID")
         )
       case "old-empty-notes":
         result = try await mirror.queryOldIncompleteEmptyNotes(

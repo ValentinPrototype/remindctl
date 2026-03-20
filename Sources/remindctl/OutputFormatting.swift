@@ -119,6 +119,9 @@ enum OutputRenderer {
     switch format {
     case .standard:
       Swift.print("\(result.queryFamily) [\(result.status.rawValue)] confidence=\(result.confidence.rawValue)")
+      if result.identityStatuses.isEmpty == false {
+        Swift.print("Identity status: \(result.identityStatuses.map(\.rawValue).joined(separator: ", "))")
+      }
       if let nativeSyncedAt = result.freshness.nativeSyncedAt {
         Swift.print("Native sync: \(DateParsing.formatDisplay(nativeSyncedAt))")
       }
@@ -135,12 +138,20 @@ enum OutputRenderer {
       for item in result.items {
         let due = item.dueAt.map { DateParsing.formatDisplay($0) } ?? "no due date"
         let semantics = item.matchedSemantics.isEmpty ? "" : " semantics=\(item.matchedSemantics.joined(separator: ","))"
-        Swift.print("[\(item.identityStatus.rawValue)] \(item.title) [\(item.listTitle)] — \(due)\(semantics)")
+        let hierarchySuffix: String
+        if item.parentSourceItemID != nil || item.childSourceItemIDs.isEmpty == false {
+          let parent = item.parentCanonicalID ?? item.parentSourceItemID ?? "-"
+          hierarchySuffix = " parent=\(parent) children=\(item.childSourceItemIDs.count)"
+        } else {
+          hierarchySuffix = ""
+        }
+        Swift.print("[\(item.identityStatus.rawValue)] \(item.title) [\(item.listTitle)] — \(due)\(semantics)\(hierarchySuffix)")
       }
     case .plain:
       for item in result.items {
         Swift.print(
           [
+            item.sourceItemID ?? "",
             item.canonicalID ?? "",
             item.identityStatus.rawValue,
             item.listTitle,
@@ -148,6 +159,8 @@ enum OutputRenderer {
             item.dueAt.map { isoFormatter().string(from: $0) } ?? "",
             item.title,
             item.matchedSemantics.joined(separator: ","),
+            item.parentCanonicalID ?? item.parentSourceItemID ?? "",
+            item.childCanonicalIDs.isEmpty ? item.childSourceItemIDs.joined(separator: ",") : item.childCanonicalIDs.joined(separator: ","),
           ].joined(separator: "\t")
         )
       }

@@ -475,6 +475,7 @@ public struct QueryFreshness: Codable, Sendable, Equatable {
 
 public struct GTDQueryItem: Identifiable, Codable, Sendable, Equatable {
   public let id: String
+  public let sourceItemID: String?
   public let canonicalID: String?
   public let identityStatus: IdentityStatus
   public let title: String
@@ -488,9 +489,14 @@ public struct GTDQueryItem: Identifiable, Codable, Sendable, Equatable {
   public let matchedSemantics: [String]
   public let observedTags: [String]
   public let acquisitionSources: [String]
+  public let parentSourceItemID: String?
+  public let parentCanonicalID: String?
+  public let childSourceItemIDs: [String]
+  public let childCanonicalIDs: [String]
 
   public init(
     id: String,
+    sourceItemID: String? = nil,
     canonicalID: String?,
     identityStatus: IdentityStatus,
     title: String,
@@ -503,9 +509,14 @@ public struct GTDQueryItem: Identifiable, Codable, Sendable, Equatable {
     updatedAt: Date?,
     matchedSemantics: [String],
     observedTags: [String],
-    acquisitionSources: [String]
+    acquisitionSources: [String],
+    parentSourceItemID: String? = nil,
+    parentCanonicalID: String? = nil,
+    childSourceItemIDs: [String] = [],
+    childCanonicalIDs: [String] = []
   ) {
     self.id = id
+    self.sourceItemID = sourceItemID
     self.canonicalID = canonicalID
     self.identityStatus = identityStatus
     self.title = title
@@ -519,6 +530,10 @@ public struct GTDQueryItem: Identifiable, Codable, Sendable, Equatable {
     self.matchedSemantics = matchedSemantics
     self.observedTags = observedTags
     self.acquisitionSources = acquisitionSources
+    self.parentSourceItemID = parentSourceItemID
+    self.parentCanonicalID = parentCanonicalID
+    self.childSourceItemIDs = childSourceItemIDs
+    self.childCanonicalIDs = childCanonicalIDs
   }
 }
 
@@ -528,6 +543,7 @@ public struct GTDQueryResult: Codable, Sendable, Equatable {
   public let confidence: QueryConfidence
   public let freshness: QueryFreshness
   public let acquisitionSources: [String]
+  public let identityStatuses: [IdentityStatus]
   public let warnings: [String]
   public let items: [GTDQueryItem]
 
@@ -537,6 +553,7 @@ public struct GTDQueryResult: Codable, Sendable, Equatable {
     confidence: QueryConfidence,
     freshness: QueryFreshness,
     acquisitionSources: [String],
+    identityStatuses: [IdentityStatus],
     warnings: [String],
     items: [GTDQueryItem]
   ) {
@@ -545,6 +562,7 @@ public struct GTDQueryResult: Codable, Sendable, Equatable {
     self.confidence = confidence
     self.freshness = freshness
     self.acquisitionSources = acquisitionSources
+    self.identityStatuses = identityStatuses
     self.warnings = warnings
     self.items = items
   }

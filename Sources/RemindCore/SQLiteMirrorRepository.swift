@@ -133,6 +133,91 @@ final class SQLiteMirrorRepository {
     return items
   }
 
+  func fetchHierarchyItems() throws -> [GTDQueryItem] {
+    let statement = try connection.prepare(
+      """
+      SELECT source_item_id, canonical_id, identity_status, title, notes, list_title, is_completed,
+             priority, due_at, created_at, updated_at, matched_semantics_json, observed_tags_json,
+             parent_source_item_id, child_source_item_ids_json
+      FROM shortcut_items
+      WHERE contract_id = ?
+      """
+    )
+    defer { statement.reset() }
+    try statement.bind(ShortcutContractID.productivityHierarchy.rawValue, at: 1)
+
+    struct RawHierarchyItem {
+      let sourceItemID: String
+      let canonicalID: String?
+      let identityStatus: IdentityStatus
+      let title: String
+      let notes: String?
+      let listTitle: String
+      let isCompleted: Bool
+      let priority: ReminderPriority
+      let dueAt: Date?
+      let createdAt: Date?
+      let updatedAt: Date?
+      let matchedSemantics: [String]
+      let observedTags: [String]
+      let parentSourceItemID: String?
+      let childSourceItemIDs: [String]
+    }
+
+    var rawItems: [RawHierarchyItem] = []
+    while try statement.step() {
+      rawItems.append(
+        RawHierarchyItem(
+          sourceItemID: statement.string(at: 0) ?? UUID().uuidString,
+          canonicalID: statement.string(at: 1),
+          identityStatus: IdentityStatus(rawValue: statement.string(at: 2) ?? "") ?? .shortcutUnresolved,
+          title: statement.string(at: 3) ?? "",
+          notes: statement.string(at: 4),
+          listTitle: statement.string(at: 5) ?? "",
+          isCompleted: statement.int64(at: 6) == 1,
+          priority: ReminderPriority(rawValue: statement.string(at: 7) ?? "") ?? .none,
+          dueAt: decodeDate(statement.string(at: 8)),
+          createdAt: decodeDate(statement.string(at: 9)),
+          updatedAt: decodeDate(statement.string(at: 10)),
+          matchedSemantics: decodeJSONStringArray(statement.string(at: 11)) ?? [],
+          observedTags: decodeJSONStringArray(statement.string(at: 12)) ?? [],
+          parentSourceItemID: statement.string(at: 13),
+          childSourceItemIDs: decodeJSONStringArray(statement.string(at: 14)) ?? []
+        )
+      )
+    }
+
+    let sourceToCanonical = Dictionary(uniqueKeysWithValues: rawItems.compactMap { item in
+      item.canonicalID.map { (item.sourceItemID, $0) }
+    })
+
+    return rawItems.map { item in
+      GTDQueryItem(
+        id: "\(ShortcutContractID.productivityHierarchy.rawValue)::\(item.sourceItemID)",
+        sourceItemID: item.sourceItemID,
+        canonicalID: item.canonicalID,
+        identityStatus: item.identityStatus,
+        title: item.title,
+        notes: item.notes,
+        listTitle: item.listTitle,
+        isCompleted: item.isCompleted,
+        priority: item.priority,
+        dueAt: item.dueAt,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        matchedSemantics: item.matchedSemantics,
+        observedTags: item.observedTags,
+        acquisitionSources: item.canonicalID == nil
+          ? [ShortcutContractID.productivityHierarchy.rawValue]
+          : [AcquisitionSourceKind.nativeEventKit.rawValue, ShortcutContractID.productivityHierarchy.rawValue],
+        parentSourceItemID: item.parentSourceItemID,
+        parentCanonicalID: item.parentSourceItemID.flatMap { sourceToCanonical[$0] },
+        childSourceItemIDs: item.childSourceItemIDs,
+        childCanonicalIDs: item.childSourceItemIDs.compactMap { sourceToCanonical[$0] }
+      )
+    }
+  }
+
   func fetchUnresolvedItems(for contractID: ShortcutContractID) throws -> [GTDQueryItem] {
     let statement = try connection.prepare(
       """

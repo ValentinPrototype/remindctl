@@ -46,9 +46,17 @@ public actor GTDMirrorStore {
     var canonicalOrder: [String] = []
     var nativeLookupByCalendarItemID: [String: CanonicalReminderRecord] = [:]
     var nativeLookupByExternalIdentifier: [String: [CanonicalReminderRecord]] = [:]
+    let collisionKeys = externalIdentityCollisionKeys(
+      reminders: nativeReminders,
+      usingExternalIDs: gateStates[.g4ExternalIDReliability] == .passed
+    )
 
     for reminder in nativeReminders.sorted(by: Self.nativeReminderLessThan) {
-      let identity = effectiveCanonicalizationPolicy.canonicalIdentity(for: reminder)
+      let identity = canonicalIdentity(
+        for: reminder,
+        collisionKeys: collisionKeys,
+        canonicalizationPolicy: effectiveCanonicalizationPolicy
+      )
       let canonicalRecord = CanonicalReminderRecord(
         id: identity.canonicalID,
         canonicalID: identity.canonicalID,
@@ -121,6 +129,7 @@ public actor GTDMirrorStore {
           shortcutGeneratedAt: nil
         ),
         acquisitionSources: [contractID.rawValue],
+        identityStatuses: [],
         warnings: [
           "\(ValidationGateID.g1TagVisibility.rawValue) is \(tagGate.rawValue). Tag-based semantic queries remain unsupported until the gate passes."
         ],
@@ -139,6 +148,7 @@ public actor GTDMirrorStore {
           shortcutGeneratedAt: nil
         ),
         acquisitionSources: [contractID.rawValue],
+        identityStatuses: [],
         warnings: ["No mirror data found for \(contractID.rawValue). Run sync first."],
         items: []
       )
@@ -157,6 +167,7 @@ public actor GTDMirrorStore {
         confidence: .low,
         freshness: freshness,
         acquisitionSources: [contractID.rawValue],
+        identityStatuses: [],
         warnings: latestContractRun.errors,
         items: []
       )
@@ -195,11 +206,14 @@ public actor GTDMirrorStore {
       warnings.append("One or more Shortcut items could not be canonicalized and remain low-confidence.")
     }
 
+    let identityStatuses = distinctIdentityStatuses(in: filteredItems)
     let confidence: QueryConfidence
     if identifierGateState != .passed {
       confidence = .low
+    } else if identityStatuses.contains(.shortcutUnresolved) || identityStatuses.contains(.collisionUnresolved) {
+      confidence = .low
     } else {
-      confidence = unresolvedItems.isEmpty ? .medium : .low
+      confidence = .medium
     }
 
     return GTDQueryResult(
@@ -210,8 +224,107 @@ public actor GTDMirrorStore {
       acquisitionSources: Array(
         Set(filteredItems.flatMap { $0.acquisitionSources } + [contractID.rawValue])
       ).sorted(),
+      identityStatuses: identityStatuses,
       warnings: warnings,
       items: filteredItems
+    )
+  }
+
+  public func queryHierarchy(
+    parentSourceItemID: String? = nil,
+    parentCanonicalID: String? = nil,
+    now: Date = Date()
+  ) throws -> GTDQueryResult {
+    let gateLookup = try validationGateLookup()
+    let hierarchyGate = gateLookup[.g2HierarchyVisibility]?.state ?? .pending
+    guard hierarchyGate == .passed else {
+      return GTDQueryResult(
+        queryFamily: ShortcutContractID.productivityHierarchy.sourceQueryFamily,
+        status: .unsupported,
+        confidence: .low,
+        freshness: QueryFreshness(
+          evaluatedAt: now,
+          nativeSyncedAt: try repository.latestNativeSyncAt(),
+          shortcutGeneratedAt: nil
+        ),
+        acquisitionSources: [ShortcutContractID.productivityHierarchy.rawValue],
+        identityStatuses: [],
+        warnings: [
+          "\(ValidationGateID.g2HierarchyVisibility.rawValue) is \(hierarchyGate.rawValue). Hierarchy queries remain unsupported until the gate passes."
+        ],
+        items: []
+      )
+    }
+
+    guard let latestContractRun = try repository.latestContractRun(for: .productivityHierarchy) else {
+      return GTDQueryResult(
+        queryFamily: ShortcutContractID.productivityHierarchy.sourceQueryFamily,
+        status: .unsupported,
+        confidence: .low,
+        freshness: QueryFreshness(
+          evaluatedAt: now,
+          nativeSyncedAt: try repository.latestNativeSyncAt(),
+          shortcutGeneratedAt: nil
+        ),
+        acquisitionSources: [ShortcutContractID.productivityHierarchy.rawValue],
+        identityStatuses: [],
+        warnings: ["No mirror data found for \(ShortcutContractID.productivityHierarchy.rawValue). Run sync first."],
+        items: []
+      )
+    }
+
+    let freshness = QueryFreshness(
+      evaluatedAt: now,
+      nativeSyncedAt: try repository.latestNativeSyncAt(),
+      shortcutGeneratedAt: latestContractRun.generatedAt
+    )
+
+    if latestContractRun.status == .error {
+      return GTDQueryResult(
+        queryFamily: ShortcutContractID.productivityHierarchy.sourceQueryFamily,
+        status: .sourceError,
+        confidence: .low,
+        freshness: freshness,
+        acquisitionSources: [ShortcutContractID.productivityHierarchy.rawValue],
+        identityStatuses: [],
+        warnings: latestContractRun.errors,
+        items: []
+      )
+    }
+
+    let identifierGateState = gateLookup[.g3ShortcutIdentifier]?.state ?? .pending
+    let items = try repository.fetchHierarchyItems()
+      .filter { item in
+        hierarchyQueryFilter(
+          item: item,
+          parentSourceItemID: parentSourceItemID,
+          parentCanonicalID: parentCanonicalID
+        )
+      }
+      .sorted(by: Self.queryItemLessThan)
+
+    var warnings = latestContractRun.warnings
+    if identifierGateState != .passed {
+      warnings.append(
+        "\(ValidationGateID.g3ShortcutIdentifier.rawValue) is \(identifierGateState.rawValue). Hierarchy rows cannot be safely joined to canonical native identities."
+      )
+    }
+
+    let identityStatuses = distinctIdentityStatuses(in: items)
+    let confidence: QueryConfidence = identityStatuses.allSatisfy { $0 == .canonicalExternal || $0 == .localOnlyUnstable }
+      && identifierGateState == .passed ? .medium : .low
+
+    return GTDQueryResult(
+      queryFamily: ShortcutContractID.productivityHierarchy.sourceQueryFamily,
+      status: items.isEmpty ? .empty : .ok,
+      confidence: confidence,
+      freshness: freshness,
+      acquisitionSources: Array(
+        Set(items.flatMap { $0.acquisitionSources } + [ShortcutContractID.productivityHierarchy.rawValue])
+      ).sorted(),
+      identityStatuses: identityStatuses,
+      warnings: warnings,
+      items: items
     )
   }
 
@@ -221,6 +334,23 @@ public actor GTDMirrorStore {
   ) throws -> GTDQueryResult {
     let gateLookup = try validationGateLookup()
     let allowUpdatedAt = gateLookup[.g5LastModifiedReliability]?.state == .passed
+    let latestNativeSyncAt = try repository.latestNativeSyncAt()
+    guard let latestNativeSyncAt else {
+      return GTDQueryResult(
+        queryFamily: "old-empty-notes",
+        status: .unsupported,
+        confidence: .low,
+        freshness: QueryFreshness(
+          evaluatedAt: now,
+          nativeSyncedAt: nil,
+          shortcutGeneratedAt: nil
+        ),
+        acquisitionSources: [AcquisitionSourceKind.nativeEventKit.rawValue],
+        identityStatuses: [],
+        warnings: ["No native mirror data found. Run sync first."],
+        items: []
+      )
+    }
 
     let items = try repository.fetchCanonicalQueryItems()
       .filter { item in
@@ -246,10 +376,11 @@ public actor GTDMirrorStore {
       confidence: .high,
       freshness: QueryFreshness(
         evaluatedAt: now,
-        nativeSyncedAt: try repository.latestNativeSyncAt(),
+        nativeSyncedAt: latestNativeSyncAt,
         shortcutGeneratedAt: nil
       ),
       acquisitionSources: [AcquisitionSourceKind.nativeEventKit.rawValue],
+      identityStatuses: distinctIdentityStatuses(in: items),
       warnings: warnings,
       items: items
     )
@@ -261,6 +392,23 @@ public actor GTDMirrorStore {
   ) throws -> GTDQueryResult {
     let gateLookup = try validationGateLookup()
     let allowUpdatedAt = gateLookup[.g5LastModifiedReliability]?.state == .passed
+    let latestNativeSyncAt = try repository.latestNativeSyncAt()
+    guard let latestNativeSyncAt else {
+      return GTDQueryResult(
+        queryFamily: "old-vague-tasks",
+        status: .unsupported,
+        confidence: .low,
+        freshness: QueryFreshness(
+          evaluatedAt: now,
+          nativeSyncedAt: nil,
+          shortcutGeneratedAt: nil
+        ),
+        acquisitionSources: [AcquisitionSourceKind.nativeEventKit.rawValue],
+        identityStatuses: [],
+        warnings: ["No native mirror data found. Run sync first."],
+        items: []
+      )
+    }
 
     let items = try repository.fetchCanonicalQueryItems()
       .filter { item in
@@ -288,10 +436,11 @@ public actor GTDMirrorStore {
       confidence: .high,
       freshness: QueryFreshness(
         evaluatedAt: now,
-        nativeSyncedAt: try repository.latestNativeSyncAt(),
+        nativeSyncedAt: latestNativeSyncAt,
         shortcutGeneratedAt: nil
       ),
       acquisitionSources: [AcquisitionSourceKind.nativeEventKit.rawValue],
+      identityStatuses: distinctIdentityStatuses(in: items),
       warnings: warnings,
       items: items
     )
@@ -460,6 +609,22 @@ public actor GTDMirrorStore {
     }
   }
 
+  private func hierarchyQueryFilter(
+    item: GTDQueryItem,
+    parentSourceItemID: String?,
+    parentCanonicalID: String?
+  ) -> Bool {
+    if let parentSourceItemID {
+      return item.sourceItemID == parentSourceItemID || item.parentSourceItemID == parentSourceItemID
+    }
+
+    if let parentCanonicalID {
+      return item.canonicalID == parentCanonicalID || item.parentCanonicalID == parentCanonicalID
+    }
+
+    return item.parentSourceItemID != nil || item.childSourceItemIDs.isEmpty == false
+  }
+
   private func semanticQueryFilter(
     item: GTDQueryItem,
     listTitle: String?,
@@ -517,6 +682,49 @@ public actor GTDMirrorStore {
       "reply", "update", "prepare", "ship", "clean", "organize", "follow", "meet", "ask", "make",
     ]
     return actionVerbs.contains { normalized.hasPrefix("\($0) ") } == false
+  }
+
+  private func distinctIdentityStatuses(in items: [GTDQueryItem]) -> [IdentityStatus] {
+    Array(Set(items.map(\.identityStatus))).sorted { $0.rawValue < $1.rawValue }
+  }
+
+  private func canonicalIdentity(
+    for reminder: NativeReminderRecord,
+    collisionKeys: Set<String>,
+    canonicalizationPolicy: CanonicalizationPolicy
+  ) -> CanonicalIdentity {
+    if let externalIdentifier = reminder.nativeExternalIdentifier,
+      collisionKeys.contains(externalCollisionKey(for: reminder.sourceScopeID, externalIdentifier: externalIdentifier))
+    {
+      return CanonicalIdentity(
+        canonicalID: "collision::\(reminder.sourceScopeID)::\(externalIdentifier)::\(reminder.nativeCalendarItemIdentifier)",
+        identityStatus: .collisionUnresolved
+      )
+    }
+
+    return canonicalizationPolicy.canonicalIdentity(for: reminder)
+  }
+
+  private func externalIdentityCollisionKeys(
+    reminders: [NativeReminderRecord],
+    usingExternalIDs: Bool
+  ) -> Set<String> {
+    guard usingExternalIDs else { return [] }
+
+    let grouped = Dictionary(grouping: reminders.compactMap { reminder -> (String, NativeReminderRecord)? in
+      guard let externalIdentifier = reminder.nativeExternalIdentifier, externalIdentifier.isEmpty == false else {
+        return nil
+      }
+      return (externalCollisionKey(for: reminder.sourceScopeID, externalIdentifier: externalIdentifier), reminder)
+    }, by: { $0.0 })
+
+    return Set(grouped.compactMap { key, values in
+      values.count > 1 ? key : nil
+    })
+  }
+
+  private func externalCollisionKey(for sourceScopeID: String, externalIdentifier: String) -> String {
+    "\(sourceScopeID)::\(externalIdentifier)"
   }
 }
 

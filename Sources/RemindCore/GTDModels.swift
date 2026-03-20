@@ -173,6 +173,38 @@ public struct ContractDiagnostic: Codable, Sendable, Equatable {
   }
 }
 
+public struct ManagedNoteFields: Codable, Sendable, Equatable {
+  public let rawNotes: String?
+  public let notesBody: String?
+  public let canonicalManagedID: String?
+  public let footerState: CanonicalNoteFooterState
+
+  public init(
+    rawNotes: String?,
+    notesBody: String?,
+    canonicalManagedID: String?,
+    footerState: CanonicalNoteFooterState
+  ) {
+    self.rawNotes = rawNotes
+    self.notesBody = notesBody
+    self.canonicalManagedID = canonicalManagedID
+    self.footerState = footerState
+  }
+
+  public init(parsedNotes: ParsedReminderNotes) {
+    self.init(
+      rawNotes: parsedNotes.rawNotes,
+      notesBody: parsedNotes.notesBody,
+      canonicalManagedID: parsedNotes.canonicalManagedID,
+      footerState: parsedNotes.footerState
+    )
+  }
+
+  public var notes: String? {
+    notesBody
+  }
+}
+
 public struct NativeReminderRecord: Identifiable, Codable, Sendable, Equatable {
   public let id: String
   public let sourceKind: AcquisitionSourceKind
@@ -181,7 +213,6 @@ public struct NativeReminderRecord: Identifiable, Codable, Sendable, Equatable {
   public let listTitle: String
   public let title: String
   public let rawNotes: String?
-  public let notes: String?
   public let notesBody: String?
   public let canonicalManagedID: String?
   public let footerState: CanonicalNoteFooterState
@@ -194,6 +225,49 @@ public struct NativeReminderRecord: Identifiable, Codable, Sendable, Equatable {
   public let url: String?
   public let nativeCalendarItemIdentifier: String
   public let nativeExternalIdentifier: String?
+
+  public var notes: String? {
+    notesBody
+  }
+
+  public init(
+    id: String,
+    sourceKind: AcquisitionSourceKind = .nativeEventKit,
+    sourceScopeID: String,
+    calendarID: String,
+    listTitle: String,
+    title: String,
+    noteFields: ManagedNoteFields,
+    isCompleted: Bool,
+    completionDate: Date?,
+    priority: ReminderPriority,
+    dueDate: Date?,
+    createdAt: Date?,
+    updatedAt: Date?,
+    url: String?,
+    nativeCalendarItemIdentifier: String,
+    nativeExternalIdentifier: String?
+  ) {
+    self.id = id
+    self.sourceKind = sourceKind
+    self.sourceScopeID = sourceScopeID
+    self.calendarID = calendarID
+    self.listTitle = listTitle
+    self.title = title
+    self.rawNotes = noteFields.rawNotes
+    self.notesBody = noteFields.notesBody
+    self.canonicalManagedID = noteFields.canonicalManagedID
+    self.footerState = noteFields.footerState
+    self.isCompleted = isCompleted
+    self.completionDate = completionDate
+    self.priority = priority
+    self.dueDate = dueDate
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+    self.url = url
+    self.nativeCalendarItemIdentifier = nativeCalendarItemIdentifier
+    self.nativeExternalIdentifier = nativeExternalIdentifier
+  }
 
   public init(
     id: String,
@@ -217,26 +291,29 @@ public struct NativeReminderRecord: Identifiable, Codable, Sendable, Equatable {
     nativeCalendarItemIdentifier: String,
     nativeExternalIdentifier: String?
   ) {
-    self.id = id
-    self.sourceKind = sourceKind
-    self.sourceScopeID = sourceScopeID
-    self.calendarID = calendarID
-    self.listTitle = listTitle
-    self.title = title
-    self.rawNotes = rawNotes ?? notes
-    self.notes = notesBody ?? notes
-    self.notesBody = notesBody ?? notes
-    self.canonicalManagedID = canonicalManagedID
-    self.footerState = footerState
-    self.isCompleted = isCompleted
-    self.completionDate = completionDate
-    self.priority = priority
-    self.dueDate = dueDate
-    self.createdAt = createdAt
-    self.updatedAt = updatedAt
-    self.url = url
-    self.nativeCalendarItemIdentifier = nativeCalendarItemIdentifier
-    self.nativeExternalIdentifier = nativeExternalIdentifier
+    self.init(
+      id: id,
+      sourceKind: sourceKind,
+      sourceScopeID: sourceScopeID,
+      calendarID: calendarID,
+      listTitle: listTitle,
+      title: title,
+      noteFields: ManagedNoteFields(
+        rawNotes: rawNotes ?? notes,
+        notesBody: notesBody ?? notes,
+        canonicalManagedID: canonicalManagedID,
+        footerState: footerState
+      ),
+      isCompleted: isCompleted,
+      completionDate: completionDate,
+      priority: priority,
+      dueDate: dueDate,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      url: url,
+      nativeCalendarItemIdentifier: nativeCalendarItemIdentifier,
+      nativeExternalIdentifier: nativeExternalIdentifier
+    )
   }
 }
 
@@ -256,7 +333,6 @@ public struct ShortcutContractItem: Codable, Sendable, Equatable {
   public let nativeExternalIdentifier: String?
   public let title: String
   public let rawNotes: String?
-  public let notes: String?
   public let notesBody: String?
   public let canonicalManagedID: String?
   public let footerState: CanonicalNoteFooterState
@@ -271,6 +347,49 @@ public struct ShortcutContractItem: Codable, Sendable, Equatable {
   public let observedTags: [String]?
   public let parentSourceItemID: String?
   public let childSourceItemIDs: [String]
+
+  public var notes: String? {
+    notesBody
+  }
+
+  public init(
+    sourceItemID: String,
+    nativeCalendarItemIdentifier: String?,
+    nativeExternalIdentifier: String?,
+    title: String,
+    noteFields: ManagedNoteFields,
+    listTitle: String,
+    isCompleted: Bool,
+    priority: ReminderPriority,
+    dueAt: Date?,
+    createdAt: Date?,
+    updatedAt: Date?,
+    url: String?,
+    matchedSemantics: [String],
+    observedTags: [String]?,
+    parentSourceItemID: String?,
+    childSourceItemIDs: [String]
+  ) {
+    self.sourceItemID = sourceItemID
+    self.nativeCalendarItemIdentifier = nativeCalendarItemIdentifier
+    self.nativeExternalIdentifier = nativeExternalIdentifier
+    self.title = title
+    self.rawNotes = noteFields.rawNotes
+    self.notesBody = noteFields.notesBody
+    self.canonicalManagedID = noteFields.canonicalManagedID
+    self.footerState = noteFields.footerState
+    self.listTitle = listTitle
+    self.isCompleted = isCompleted
+    self.priority = priority
+    self.dueAt = dueAt
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+    self.url = url
+    self.matchedSemantics = matchedSemantics
+    self.observedTags = observedTags
+    self.parentSourceItemID = parentSourceItemID
+    self.childSourceItemIDs = childSourceItemIDs
+  }
 
   public init(
     sourceItemID: String,
@@ -294,26 +413,29 @@ public struct ShortcutContractItem: Codable, Sendable, Equatable {
     parentSourceItemID: String?,
     childSourceItemIDs: [String]
   ) {
-    self.sourceItemID = sourceItemID
-    self.nativeCalendarItemIdentifier = nativeCalendarItemIdentifier
-    self.nativeExternalIdentifier = nativeExternalIdentifier
-    self.title = title
-    self.rawNotes = rawNotes ?? notes
-    self.notes = notesBody ?? notes
-    self.notesBody = notesBody ?? notes
-    self.canonicalManagedID = canonicalManagedID
-    self.footerState = footerState
-    self.listTitle = listTitle
-    self.isCompleted = isCompleted
-    self.priority = priority
-    self.dueAt = dueAt
-    self.createdAt = createdAt
-    self.updatedAt = updatedAt
-    self.url = url
-    self.matchedSemantics = matchedSemantics
-    self.observedTags = observedTags
-    self.parentSourceItemID = parentSourceItemID
-    self.childSourceItemIDs = childSourceItemIDs
+    self.init(
+      sourceItemID: sourceItemID,
+      nativeCalendarItemIdentifier: nativeCalendarItemIdentifier,
+      nativeExternalIdentifier: nativeExternalIdentifier,
+      title: title,
+      noteFields: ManagedNoteFields(
+        rawNotes: rawNotes ?? notes,
+        notesBody: notesBody ?? notes,
+        canonicalManagedID: canonicalManagedID,
+        footerState: footerState
+      ),
+      listTitle: listTitle,
+      isCompleted: isCompleted,
+      priority: priority,
+      dueAt: dueAt,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      url: url,
+      matchedSemantics: matchedSemantics,
+      observedTags: observedTags,
+      parentSourceItemID: parentSourceItemID,
+      childSourceItemIDs: childSourceItemIDs
+    )
   }
 }
 
@@ -354,7 +476,6 @@ public struct CanonicalReminderRecord: Identifiable, Codable, Sendable, Equatabl
   public let listTitle: String
   public let title: String
   public let rawNotes: String?
-  public let notes: String?
   public let notesBody: String?
   public let canonicalManagedID: String?
   public let footerState: CanonicalNoteFooterState
@@ -372,6 +493,61 @@ public struct CanonicalReminderRecord: Identifiable, Codable, Sendable, Equatabl
   public let acquisitionSources: [String]
   public let lastNativeSyncAt: Date?
   public let lastSemanticSyncAt: Date?
+
+  public var notes: String? {
+    notesBody
+  }
+
+  public init(
+    id: String,
+    canonicalID: String,
+    identityStatus: IdentityStatus,
+    sourceScopeID: String,
+    calendarID: String,
+    listTitle: String,
+    title: String,
+    noteFields: ManagedNoteFields,
+    isCompleted: Bool,
+    completionDate: Date?,
+    priority: ReminderPriority,
+    dueDate: Date?,
+    createdAt: Date?,
+    updatedAt: Date?,
+    url: String?,
+    nativeCalendarItemIdentifier: String?,
+    nativeExternalIdentifier: String?,
+    matchedSemantics: [String],
+    observedTags: [String],
+    acquisitionSources: [String],
+    lastNativeSyncAt: Date?,
+    lastSemanticSyncAt: Date?
+  ) {
+    self.id = id
+    self.canonicalID = canonicalID
+    self.identityStatus = identityStatus
+    self.sourceScopeID = sourceScopeID
+    self.calendarID = calendarID
+    self.listTitle = listTitle
+    self.title = title
+    self.rawNotes = noteFields.rawNotes
+    self.notesBody = noteFields.notesBody
+    self.canonicalManagedID = noteFields.canonicalManagedID
+    self.footerState = noteFields.footerState
+    self.isCompleted = isCompleted
+    self.completionDate = completionDate
+    self.priority = priority
+    self.dueDate = dueDate
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+    self.url = url
+    self.nativeCalendarItemIdentifier = nativeCalendarItemIdentifier
+    self.nativeExternalIdentifier = nativeExternalIdentifier
+    self.matchedSemantics = matchedSemantics
+    self.observedTags = observedTags
+    self.acquisitionSources = acquisitionSources
+    self.lastNativeSyncAt = lastNativeSyncAt
+    self.lastSemanticSyncAt = lastSemanticSyncAt
+  }
 
   public init(
     id: String,
@@ -401,32 +577,35 @@ public struct CanonicalReminderRecord: Identifiable, Codable, Sendable, Equatabl
     lastNativeSyncAt: Date?,
     lastSemanticSyncAt: Date?
   ) {
-    self.id = id
-    self.canonicalID = canonicalID
-    self.identityStatus = identityStatus
-    self.sourceScopeID = sourceScopeID
-    self.calendarID = calendarID
-    self.listTitle = listTitle
-    self.title = title
-    self.rawNotes = rawNotes ?? notes
-    self.notes = notesBody ?? notes
-    self.notesBody = notesBody ?? notes
-    self.canonicalManagedID = canonicalManagedID
-    self.footerState = footerState
-    self.isCompleted = isCompleted
-    self.completionDate = completionDate
-    self.priority = priority
-    self.dueDate = dueDate
-    self.createdAt = createdAt
-    self.updatedAt = updatedAt
-    self.url = url
-    self.nativeCalendarItemIdentifier = nativeCalendarItemIdentifier
-    self.nativeExternalIdentifier = nativeExternalIdentifier
-    self.matchedSemantics = matchedSemantics
-    self.observedTags = observedTags
-    self.acquisitionSources = acquisitionSources
-    self.lastNativeSyncAt = lastNativeSyncAt
-    self.lastSemanticSyncAt = lastSemanticSyncAt
+    self.init(
+      id: id,
+      canonicalID: canonicalID,
+      identityStatus: identityStatus,
+      sourceScopeID: sourceScopeID,
+      calendarID: calendarID,
+      listTitle: listTitle,
+      title: title,
+      noteFields: ManagedNoteFields(
+        rawNotes: rawNotes ?? notes,
+        notesBody: notesBody ?? notes,
+        canonicalManagedID: canonicalManagedID,
+        footerState: footerState
+      ),
+      isCompleted: isCompleted,
+      completionDate: completionDate,
+      priority: priority,
+      dueDate: dueDate,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      url: url,
+      nativeCalendarItemIdentifier: nativeCalendarItemIdentifier,
+      nativeExternalIdentifier: nativeExternalIdentifier,
+      matchedSemantics: matchedSemantics,
+      observedTags: observedTags,
+      acquisitionSources: acquisitionSources,
+      lastNativeSyncAt: lastNativeSyncAt,
+      lastSemanticSyncAt: lastSemanticSyncAt
+    )
   }
 }
 
@@ -439,7 +618,6 @@ public struct UnresolvedShortcutRecord: Identifiable, Codable, Sendable, Equatab
   public let nativeExternalIdentifier: String?
   public let title: String
   public let rawNotes: String?
-  public let notes: String?
   public let notesBody: String?
   public let canonicalManagedID: String?
   public let footerState: CanonicalNoteFooterState
@@ -455,6 +633,57 @@ public struct UnresolvedShortcutRecord: Identifiable, Codable, Sendable, Equatab
   public let parentSourceItemID: String?
   public let childSourceItemIDs: [String]
   public let insertedAt: Date
+
+  public var notes: String? {
+    notesBody
+  }
+
+  public init(
+    id: String,
+    contractID: ShortcutContractID,
+    sourceItemID: String,
+    identityStatus: IdentityStatus,
+    nativeCalendarItemIdentifier: String?,
+    nativeExternalIdentifier: String?,
+    title: String,
+    noteFields: ManagedNoteFields,
+    listTitle: String,
+    isCompleted: Bool,
+    priority: ReminderPriority,
+    dueAt: Date?,
+    createdAt: Date?,
+    updatedAt: Date?,
+    url: String?,
+    matchedSemantics: [String],
+    observedTags: [String],
+    parentSourceItemID: String?,
+    childSourceItemIDs: [String],
+    insertedAt: Date
+  ) {
+    self.id = id
+    self.contractID = contractID
+    self.sourceItemID = sourceItemID
+    self.identityStatus = identityStatus
+    self.nativeCalendarItemIdentifier = nativeCalendarItemIdentifier
+    self.nativeExternalIdentifier = nativeExternalIdentifier
+    self.title = title
+    self.rawNotes = noteFields.rawNotes
+    self.notesBody = noteFields.notesBody
+    self.canonicalManagedID = noteFields.canonicalManagedID
+    self.footerState = noteFields.footerState
+    self.listTitle = listTitle
+    self.isCompleted = isCompleted
+    self.priority = priority
+    self.dueAt = dueAt
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+    self.url = url
+    self.matchedSemantics = matchedSemantics
+    self.observedTags = observedTags
+    self.parentSourceItemID = parentSourceItemID
+    self.childSourceItemIDs = childSourceItemIDs
+    self.insertedAt = insertedAt
+  }
 
   public init(
     id: String,
@@ -482,30 +711,33 @@ public struct UnresolvedShortcutRecord: Identifiable, Codable, Sendable, Equatab
     childSourceItemIDs: [String],
     insertedAt: Date
   ) {
-    self.id = id
-    self.contractID = contractID
-    self.sourceItemID = sourceItemID
-    self.identityStatus = identityStatus
-    self.nativeCalendarItemIdentifier = nativeCalendarItemIdentifier
-    self.nativeExternalIdentifier = nativeExternalIdentifier
-    self.title = title
-    self.rawNotes = rawNotes ?? notes
-    self.notes = notesBody ?? notes
-    self.notesBody = notesBody ?? notes
-    self.canonicalManagedID = canonicalManagedID
-    self.footerState = footerState
-    self.listTitle = listTitle
-    self.isCompleted = isCompleted
-    self.priority = priority
-    self.dueAt = dueAt
-    self.createdAt = createdAt
-    self.updatedAt = updatedAt
-    self.url = url
-    self.matchedSemantics = matchedSemantics
-    self.observedTags = observedTags
-    self.parentSourceItemID = parentSourceItemID
-    self.childSourceItemIDs = childSourceItemIDs
-    self.insertedAt = insertedAt
+    self.init(
+      id: id,
+      contractID: contractID,
+      sourceItemID: sourceItemID,
+      identityStatus: identityStatus,
+      nativeCalendarItemIdentifier: nativeCalendarItemIdentifier,
+      nativeExternalIdentifier: nativeExternalIdentifier,
+      title: title,
+      noteFields: ManagedNoteFields(
+        rawNotes: rawNotes ?? notes,
+        notesBody: notesBody ?? notes,
+        canonicalManagedID: canonicalManagedID,
+        footerState: footerState
+      ),
+      listTitle: listTitle,
+      isCompleted: isCompleted,
+      priority: priority,
+      dueAt: dueAt,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      url: url,
+      matchedSemantics: matchedSemantics,
+      observedTags: observedTags,
+      parentSourceItemID: parentSourceItemID,
+      childSourceItemIDs: childSourceItemIDs,
+      insertedAt: insertedAt
+    )
   }
 }
 
@@ -552,11 +784,7 @@ public struct GTDQueryItem: Identifiable, Codable, Sendable, Equatable {
     canonicalID: String?,
     identityStatus: IdentityStatus,
     title: String,
-    rawNotes: String? = nil,
-    notes: String?,
-    notesBody: String? = nil,
-    canonicalManagedID: String? = nil,
-    footerState: CanonicalNoteFooterState = .missing,
+    noteFields: ManagedNoteFields,
     listTitle: String,
     isCompleted: Bool,
     priority: ReminderPriority,
@@ -576,11 +804,11 @@ public struct GTDQueryItem: Identifiable, Codable, Sendable, Equatable {
     self.canonicalID = canonicalID
     self.identityStatus = identityStatus
     self.title = title
-    self.rawNotes = rawNotes ?? notes
-    self.notes = notesBody ?? notes
-    self.notesBody = notesBody ?? notes
-    self.canonicalManagedID = canonicalManagedID
-    self.footerState = footerState
+    self.rawNotes = noteFields.rawNotes
+    self.notes = noteFields.notes
+    self.notesBody = noteFields.notesBody
+    self.canonicalManagedID = noteFields.canonicalManagedID
+    self.footerState = noteFields.footerState
     self.listTitle = listTitle
     self.isCompleted = isCompleted
     self.priority = priority
@@ -594,6 +822,59 @@ public struct GTDQueryItem: Identifiable, Codable, Sendable, Equatable {
     self.parentCanonicalID = parentCanonicalID
     self.childSourceItemIDs = childSourceItemIDs
     self.childCanonicalIDs = childCanonicalIDs
+  }
+
+  public init(
+    id: String,
+    sourceItemID: String? = nil,
+    canonicalID: String?,
+    identityStatus: IdentityStatus,
+    title: String,
+    rawNotes: String? = nil,
+    notes: String?,
+    notesBody: String? = nil,
+    canonicalManagedID: String? = nil,
+    footerState: CanonicalNoteFooterState = .missing,
+    listTitle: String,
+    isCompleted: Bool,
+    priority: ReminderPriority,
+    dueAt: Date?,
+    createdAt: Date?,
+    updatedAt: Date?,
+    matchedSemantics: [String],
+    observedTags: [String],
+    acquisitionSources: [String],
+    parentSourceItemID: String? = nil,
+    parentCanonicalID: String? = nil,
+    childSourceItemIDs: [String] = [],
+    childCanonicalIDs: [String] = []
+  ) {
+    self.init(
+      id: id,
+      sourceItemID: sourceItemID,
+      canonicalID: canonicalID,
+      identityStatus: identityStatus,
+      title: title,
+      noteFields: ManagedNoteFields(
+        rawNotes: rawNotes ?? notes,
+        notesBody: notesBody ?? notes,
+        canonicalManagedID: canonicalManagedID,
+        footerState: footerState
+      ),
+      listTitle: listTitle,
+      isCompleted: isCompleted,
+      priority: priority,
+      dueAt: dueAt,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      matchedSemantics: matchedSemantics,
+      observedTags: observedTags,
+      acquisitionSources: acquisitionSources,
+      parentSourceItemID: parentSourceItemID,
+      parentCanonicalID: parentCanonicalID,
+      childSourceItemIDs: childSourceItemIDs,
+      childCanonicalIDs: childCanonicalIDs
+    )
   }
 }
 

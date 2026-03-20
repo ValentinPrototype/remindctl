@@ -40,12 +40,11 @@ public actor GTDMirrorStore {
     let gateStates = try validationGateStateLookup()
     let allowCanonicalPromotion = gateStates[.g3ShortcutIdentifier] == .passed
 
-    let normalizedNativeReminders = nativeReminders.map(Self.ensureManagedFooter)
     var canonicalRecordsByID: [String: CanonicalReminderRecord] = [:]
     var canonicalOrder: [String] = []
     var canonicalRecordsByManagedID: [String: CanonicalReminderRecord] = [:]
 
-    for reminder in normalizedNativeReminders.sorted(by: Self.nativeReminderLessThan) {
+    for reminder in nativeReminders.sorted(by: Self.nativeReminderLessThan) {
       let identity = canonicalizationPolicy.canonicalIdentity(for: reminder)
       let canonicalRecord = CanonicalReminderRecord(
         id: identity.canonicalID,
@@ -55,11 +54,12 @@ public actor GTDMirrorStore {
         calendarID: reminder.calendarID,
         listTitle: reminder.listTitle,
         title: reminder.title,
-        rawNotes: reminder.rawNotes,
-        notes: reminder.notes,
-        notesBody: reminder.notesBody,
-        canonicalManagedID: reminder.canonicalManagedID,
-        footerState: reminder.footerState,
+        noteFields: ManagedNoteFields(
+          rawNotes: reminder.rawNotes,
+          notesBody: reminder.notesBody,
+          canonicalManagedID: reminder.canonicalManagedID,
+          footerState: reminder.footerState
+        ),
         isCompleted: reminder.isCompleted,
         completionDate: reminder.completionDate,
         priority: reminder.priority,
@@ -94,7 +94,7 @@ public actor GTDMirrorStore {
 
     let canonicalRecords = canonicalOrder.compactMap { canonicalRecordsByID[$0] }
     return try repository.replaceSnapshot(
-      nativeReminders: normalizedNativeReminders,
+      nativeReminders: nativeReminders,
       canonicalRecords: canonicalRecords,
       resolvedShortcutPayloads: resolvedShortcutPayloads,
       completedAt: completedAt
@@ -347,7 +347,7 @@ public actor GTDMirrorStore {
     let items = try repository.fetchCanonicalQueryItems()
       .filter { item in
         guard item.isCompleted == false else { return false }
-        guard item.notes?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true else { return false }
+        guard item.notesBody?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true else { return false }
         return isOlderThanThreshold(
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
@@ -482,11 +482,12 @@ public actor GTDMirrorStore {
               canonicalID: existingCanonicalRecord.canonicalID,
               identityStatus: existingCanonicalRecord.identityStatus,
               title: existingCanonicalRecord.title,
-              rawNotes: existingCanonicalRecord.rawNotes,
-              notes: existingCanonicalRecord.notes,
-              notesBody: existingCanonicalRecord.notesBody,
-              canonicalManagedID: existingCanonicalRecord.canonicalManagedID,
-              footerState: existingCanonicalRecord.footerState,
+              noteFields: ManagedNoteFields(
+                rawNotes: existingCanonicalRecord.rawNotes,
+                notesBody: existingCanonicalRecord.notesBody,
+                canonicalManagedID: existingCanonicalRecord.canonicalManagedID,
+                footerState: existingCanonicalRecord.footerState
+              ),
               listTitle: existingCanonicalRecord.listTitle,
               isCompleted: existingCanonicalRecord.isCompleted,
               priority: existingCanonicalRecord.priority,
@@ -509,11 +510,12 @@ public actor GTDMirrorStore {
               canonicalID: nil,
               identityStatus: item.footerState == .invalid ? .footerInvalid : .shortcutUnresolved,
               title: item.title,
-              rawNotes: item.rawNotes,
-              notes: item.notes,
-              notesBody: item.notesBody,
-              canonicalManagedID: item.canonicalManagedID,
-              footerState: item.footerState,
+              noteFields: ManagedNoteFields(
+                rawNotes: item.rawNotes,
+                notesBody: item.notesBody,
+                canonicalManagedID: item.canonicalManagedID,
+                footerState: item.footerState
+              ),
               listTitle: item.listTitle,
               isCompleted: item.isCompleted,
               priority: item.priority,
@@ -565,11 +567,12 @@ public actor GTDMirrorStore {
       calendarID: canonicalRecord.calendarID,
       listTitle: canonicalRecord.listTitle,
       title: canonicalRecord.title,
-      rawNotes: canonicalRecord.rawNotes ?? item.rawNotes,
-      notes: canonicalRecord.notes,
-      notesBody: canonicalRecord.notesBody,
-      canonicalManagedID: canonicalRecord.canonicalManagedID,
-      footerState: canonicalRecord.footerState,
+      noteFields: ManagedNoteFields(
+        rawNotes: canonicalRecord.rawNotes ?? item.rawNotes,
+        notesBody: canonicalRecord.notesBody,
+        canonicalManagedID: canonicalRecord.canonicalManagedID,
+        footerState: canonicalRecord.footerState
+      ),
       isCompleted: canonicalRecord.isCompleted,
       completionDate: canonicalRecord.completionDate,
       priority: canonicalRecord.priority,
@@ -677,35 +680,6 @@ public actor GTDMirrorStore {
 
   private func distinctIdentityStatuses(in items: [GTDQueryItem]) -> [IdentityStatus] {
     Array(Set(items.map(\.identityStatus))).sorted { $0.rawValue < $1.rawValue }
-  }
-
-  private static func ensureManagedFooter(_ reminder: NativeReminderRecord) -> NativeReminderRecord {
-    let normalizedNotes = CanonicalNoteFooter.normalize(
-      rawNotes: reminder.rawNotes ?? reminder.notes,
-      canonicalManagedID: reminder.canonicalManagedID
-    )
-    return NativeReminderRecord(
-      id: reminder.id,
-      sourceKind: reminder.sourceKind,
-      sourceScopeID: reminder.sourceScopeID,
-      calendarID: reminder.calendarID,
-      listTitle: reminder.listTitle,
-      title: reminder.title,
-      rawNotes: normalizedNotes.rawNotes,
-      notes: normalizedNotes.notesBody,
-      notesBody: normalizedNotes.notesBody,
-      canonicalManagedID: normalizedNotes.canonicalManagedID,
-      footerState: normalizedNotes.footerState,
-      isCompleted: reminder.isCompleted,
-      completionDate: reminder.completionDate,
-      priority: reminder.priority,
-      dueDate: reminder.dueDate,
-      createdAt: reminder.createdAt,
-      updatedAt: reminder.updatedAt,
-      url: reminder.url,
-      nativeCalendarItemIdentifier: reminder.nativeCalendarItemIdentifier,
-      nativeExternalIdentifier: reminder.nativeExternalIdentifier
-    )
   }
 }
 

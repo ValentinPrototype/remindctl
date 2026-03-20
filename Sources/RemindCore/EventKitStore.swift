@@ -1,6 +1,16 @@
 @preconcurrency import EventKit
 import Foundation
 
+public struct ManagedNoteFooterNormalizationSummary: Sendable, Equatable {
+  public let scannedReminderCount: Int
+  public let updatedReminderCount: Int
+
+  public init(scannedReminderCount: Int, updatedReminderCount: Int) {
+    self.scannedReminderCount = scannedReminderCount
+    self.updatedReminderCount = updatedReminderCount
+  }
+}
+
 public actor RemindersStore {
   private let eventStore = EKEventStore()
   private let calendar: Calendar
@@ -57,12 +67,15 @@ public actor RemindersStore {
   }
 
   public func nativeReminders(in listName: String? = nil) async throws -> [NativeReminderRecord] {
-    try await normalizedNativeReminders(in: listName)
+    let calendars = try calendars(for: listName)
+    return await fetchNativeReminders(in: calendars)
   }
 
-  public func normalizedNativeReminders(in listName: String? = nil) async throws -> [NativeReminderRecord] {
+  public func normalizeManagedNoteFooters(
+    in listName: String? = nil
+  ) async throws -> ManagedNoteFooterNormalizationSummary {
     let calendars = try calendars(for: listName)
-    return try await ensureCanonicalManagedNotes(in: calendars)
+    return try await normalizeManagedNoteFooters(in: calendars)
   }
 
   public func createList(name: String) async throws -> ReminderList {
@@ -240,11 +253,7 @@ public actor RemindersStore {
       let calendarID: String
       let listTitle: String
       let title: String
-      let rawNotes: String?
-      let notes: String?
-      let notesBody: String?
-      let canonicalManagedID: String?
-      let footerState: CanonicalNoteFooterState
+      let noteFields: ManagedNoteFields
       let isCompleted: Bool
       let completionDate: Date?
       let priority: Int
@@ -271,11 +280,7 @@ public actor RemindersStore {
             calendarID: reminder.calendar.calendarIdentifier,
             listTitle: reminder.calendar.title,
             title: reminder.title ?? "",
-            rawNotes: parsedNotes.rawNotes,
-            notes: parsedNotes.notesBody,
-            notesBody: parsedNotes.notesBody,
-            canonicalManagedID: parsedNotes.canonicalManagedID,
-            footerState: parsedNotes.footerState,
+            noteFields: ManagedNoteFields(parsedNotes: parsedNotes),
             isCompleted: reminder.isCompleted,
             completionDate: reminder.completionDate,
             priority: Int(reminder.priority),
@@ -298,11 +303,7 @@ public actor RemindersStore {
         calendarID: data.calendarID,
         listTitle: data.listTitle,
         title: data.title,
-        rawNotes: data.rawNotes,
-        notes: data.notes,
-        notesBody: data.notesBody,
-        canonicalManagedID: data.canonicalManagedID,
-        footerState: data.footerState,
+        noteFields: data.noteFields,
         isCompleted: data.isCompleted,
         completionDate: data.completionDate,
         priority: ReminderPriority(eventKitValue: data.priority),
@@ -316,9 +317,11 @@ public actor RemindersStore {
     }
   }
 
-  private func ensureCanonicalManagedNotes(in calendars: [EKCalendar]) async throws -> [NativeReminderRecord] {
+  private func normalizeManagedNoteFooters(
+    in calendars: [EKCalendar]
+  ) async throws -> ManagedNoteFooterNormalizationSummary {
     let reminderIDs = await fetchReminderIdentifiers(in: calendars)
-    var didMutate = false
+    var updatedReminderCount = 0
 
     for reminderID in reminderIDs {
       let reminder = try reminder(withID: reminderID)
@@ -330,46 +333,14 @@ public actor RemindersStore {
       if normalizedNotes.rawNotes != reminder.notes {
         reminder.notes = normalizedNotes.rawNotes
         try eventStore.save(reminder, commit: true)
-        didMutate = true
+        updatedReminderCount += 1
       }
     }
 
-    if didMutate {
-      return await fetchNativeReminders(in: calendars)
-    }
-
-    return reminderIDs.compactMap { reminderID in
-      guard let reminder = try? reminder(withID: reminderID) else {
-        return nil
-      }
-      let sourceIdentifier = reminder.calendar.source.sourceIdentifier
-      guard sourceIdentifier.isEmpty == false else {
-        return nil
-      }
-
-      let parsedNotes = CanonicalNoteFooter.parse(rawNotes: reminder.notes)
-      return NativeReminderRecord(
-        id: reminder.calendarItemIdentifier,
-        sourceScopeID: sourceIdentifier,
-        calendarID: reminder.calendar.calendarIdentifier,
-        listTitle: reminder.calendar.title,
-        title: reminder.title ?? "",
-        rawNotes: parsedNotes.rawNotes,
-        notes: parsedNotes.notesBody,
-        notesBody: parsedNotes.notesBody,
-        canonicalManagedID: parsedNotes.canonicalManagedID,
-        footerState: parsedNotes.footerState,
-        isCompleted: reminder.isCompleted,
-        completionDate: reminder.completionDate,
-        priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
-        dueDate: date(from: reminder.dueDateComponents),
-        createdAt: reminder.creationDate,
-        updatedAt: reminder.lastModifiedDate,
-        url: reminder.url?.absoluteString,
-        nativeCalendarItemIdentifier: reminder.calendarItemIdentifier,
-        nativeExternalIdentifier: reminder.calendarItemExternalIdentifier
-      )
-    }
+    return ManagedNoteFooterNormalizationSummary(
+      scannedReminderCount: reminderIDs.count,
+      updatedReminderCount: updatedReminderCount
+    )
   }
 
   private func fetchReminderIdentifiers(in calendars: [EKCalendar]) async -> [String] {

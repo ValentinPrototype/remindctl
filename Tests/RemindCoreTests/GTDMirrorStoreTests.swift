@@ -334,13 +334,16 @@ struct GTDMirrorStoreTests {
     updatedAt: Date,
     externalIdentifier: String? = nil
   ) -> NativeReminderRecord {
-    NativeReminderRecord(
+    let noteFields = ManagedNoteFields(
+      parsedNotes: CanonicalNoteFooter.normalize(rawNotes: notes)
+    )
+    return NativeReminderRecord(
       id: id,
       sourceScopeID: "local-source",
       calendarID: "calendar-1",
       listTitle: "Work",
       title: title,
-      notes: notes,
+      noteFields: noteFields,
       isCompleted: false,
       completionDate: nil,
       priority: .medium,

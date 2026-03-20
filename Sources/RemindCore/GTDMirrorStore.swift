@@ -38,25 +38,15 @@ public actor GTDMirrorStore {
     completedAt: Date = Date()
   ) throws -> MirrorSyncSummary {
     let gateStates = try validationGateStateLookup()
-    let effectiveCanonicalizationPolicy =
-      gateStates[.g4ExternalIDReliability] == .passed ? canonicalizationPolicy : CanonicalizationPolicy()
     let allowCanonicalPromotion = gateStates[.g3ShortcutIdentifier] == .passed
 
+    let normalizedNativeReminders = nativeReminders.map(Self.ensureManagedFooter)
     var canonicalRecordsByID: [String: CanonicalReminderRecord] = [:]
     var canonicalOrder: [String] = []
-    var nativeLookupByCalendarItemID: [String: CanonicalReminderRecord] = [:]
-    var nativeLookupByExternalIdentifier: [String: [CanonicalReminderRecord]] = [:]
-    let collisionKeys = externalIdentityCollisionKeys(
-      reminders: nativeReminders,
-      usingExternalIDs: gateStates[.g4ExternalIDReliability] == .passed
-    )
+    var canonicalRecordsByManagedID: [String: CanonicalReminderRecord] = [:]
 
-    for reminder in nativeReminders.sorted(by: Self.nativeReminderLessThan) {
-      let identity = canonicalIdentity(
-        for: reminder,
-        collisionKeys: collisionKeys,
-        canonicalizationPolicy: effectiveCanonicalizationPolicy
-      )
+    for reminder in normalizedNativeReminders.sorted(by: Self.nativeReminderLessThan) {
+      let identity = canonicalizationPolicy.canonicalIdentity(for: reminder)
       let canonicalRecord = CanonicalReminderRecord(
         id: identity.canonicalID,
         canonicalID: identity.canonicalID,
@@ -65,7 +55,11 @@ public actor GTDMirrorStore {
         calendarID: reminder.calendarID,
         listTitle: reminder.listTitle,
         title: reminder.title,
+        rawNotes: reminder.rawNotes,
         notes: reminder.notes,
+        notesBody: reminder.notesBody,
+        canonicalManagedID: reminder.canonicalManagedID,
+        footerState: reminder.footerState,
         isCompleted: reminder.isCompleted,
         completionDate: reminder.completionDate,
         priority: reminder.priority,
@@ -83,17 +77,15 @@ public actor GTDMirrorStore {
       )
       canonicalRecordsByID[canonicalRecord.canonicalID] = canonicalRecord
       canonicalOrder.append(canonicalRecord.canonicalID)
-      nativeLookupByCalendarItemID[reminder.nativeCalendarItemIdentifier] = canonicalRecord
-      if let externalIdentifier = reminder.nativeExternalIdentifier, externalIdentifier.isEmpty == false {
-        nativeLookupByExternalIdentifier[externalIdentifier, default: []].append(canonicalRecord)
+      if let canonicalManagedID = reminder.canonicalManagedID {
+        canonicalRecordsByManagedID[canonicalManagedID] = canonicalRecord
       }
     }
 
     let resolvedShortcutPayloads = try shortcutPayloads.map { payload in
       try resolveShortcutPayload(
         payload,
-        nativeLookupByCalendarItemID: nativeLookupByCalendarItemID,
-        nativeLookupByExternalIdentifier: nativeLookupByExternalIdentifier,
+        canonicalRecordsByManagedID: canonicalRecordsByManagedID,
         canonicalRecordsByID: &canonicalRecordsByID,
         snapshotTimestamp: completedAt,
         allowCanonicalPromotion: allowCanonicalPromotion
@@ -102,7 +94,7 @@ public actor GTDMirrorStore {
 
     let canonicalRecords = canonicalOrder.compactMap { canonicalRecordsByID[$0] }
     return try repository.replaceSnapshot(
-      nativeReminders: nativeReminders,
+      nativeReminders: normalizedNativeReminders,
       canonicalRecords: canonicalRecords,
       resolvedShortcutPayloads: resolvedShortcutPayloads,
       completedAt: completedAt
@@ -200,7 +192,7 @@ public actor GTDMirrorStore {
     var warnings = latestContractRun.warnings
     if identifierGateState != .passed {
       warnings.append(
-        "\(ValidationGateID.g3ShortcutIdentifier.rawValue) is \(identifierGateState.rawValue). Canonical promotion is disabled, so semantic results are returned only from unresolved Shortcut rows."
+        "\(ValidationGateID.g3ShortcutIdentifier.rawValue) is \(identifierGateState.rawValue). Canonical promotion is disabled unless Shortcut notes preserve a valid managed footer."
       )
     } else if unresolvedItems.isEmpty == false {
       warnings.append("One or more Shortcut items could not be canonicalized and remain low-confidence.")
@@ -306,12 +298,12 @@ public actor GTDMirrorStore {
     var warnings = latestContractRun.warnings
     if identifierGateState != .passed {
       warnings.append(
-        "\(ValidationGateID.g3ShortcutIdentifier.rawValue) is \(identifierGateState.rawValue). Hierarchy rows cannot be safely joined to canonical native identities."
+        "\(ValidationGateID.g3ShortcutIdentifier.rawValue) is \(identifierGateState.rawValue). Hierarchy rows cannot be safely joined unless Shortcut notes preserve valid managed footers."
       )
     }
 
     let identityStatuses = distinctIdentityStatuses(in: items)
-    let confidence: QueryConfidence = identityStatuses.allSatisfy { $0 == .canonicalExternal || $0 == .localOnlyUnstable }
+    let confidence: QueryConfidence = identityStatuses.allSatisfy { $0 == .canonicalManaged }
       && identifierGateState == .passed ? .medium : .low
 
     return GTDQueryResult(
@@ -456,8 +448,7 @@ public actor GTDMirrorStore {
 
   private func resolveShortcutPayload(
     _ payload: ValidatedShortcutContractPayload,
-    nativeLookupByCalendarItemID: [String: CanonicalReminderRecord],
-    nativeLookupByExternalIdentifier: [String: [CanonicalReminderRecord]],
+    canonicalRecordsByManagedID: [String: CanonicalReminderRecord],
     canonicalRecordsByID: inout [String: CanonicalReminderRecord],
     snapshotTimestamp: Date,
     allowCanonicalPromotion: Bool
@@ -468,8 +459,7 @@ public actor GTDMirrorStore {
       let canonicalMatch: CanonicalReminderRecord? = if allowCanonicalPromotion {
         resolveCanonicalMatch(
           for: item,
-          nativeLookupByCalendarItemID: nativeLookupByCalendarItemID,
-          nativeLookupByExternalIdentifier: nativeLookupByExternalIdentifier
+          canonicalRecordsByManagedID: canonicalRecordsByManagedID
         )
       } else {
         nil
@@ -492,7 +482,11 @@ public actor GTDMirrorStore {
               canonicalID: existingCanonicalRecord.canonicalID,
               identityStatus: existingCanonicalRecord.identityStatus,
               title: existingCanonicalRecord.title,
+              rawNotes: existingCanonicalRecord.rawNotes,
               notes: existingCanonicalRecord.notes,
+              notesBody: existingCanonicalRecord.notesBody,
+              canonicalManagedID: existingCanonicalRecord.canonicalManagedID,
+              footerState: existingCanonicalRecord.footerState,
               listTitle: existingCanonicalRecord.listTitle,
               isCompleted: existingCanonicalRecord.isCompleted,
               priority: existingCanonicalRecord.priority,
@@ -513,9 +507,13 @@ public actor GTDMirrorStore {
             record: GTDQueryItem(
               id: "\(payload.contractID.rawValue)::\(item.sourceItemID)",
               canonicalID: nil,
-              identityStatus: .shortcutUnresolved,
+              identityStatus: item.footerState == .invalid ? .footerInvalid : .shortcutUnresolved,
               title: item.title,
+              rawNotes: item.rawNotes,
               notes: item.notes,
+              notesBody: item.notesBody,
+              canonicalManagedID: item.canonicalManagedID,
+              footerState: item.footerState,
               listTitle: item.listTitle,
               isCompleted: item.isCompleted,
               priority: item.priority,
@@ -536,23 +534,12 @@ public actor GTDMirrorStore {
 
   private func resolveCanonicalMatch(
     for item: ShortcutContractItem,
-    nativeLookupByCalendarItemID: [String: CanonicalReminderRecord],
-    nativeLookupByExternalIdentifier: [String: [CanonicalReminderRecord]]
+    canonicalRecordsByManagedID: [String: CanonicalReminderRecord]
   ) -> CanonicalReminderRecord? {
-    if let nativeCalendarItemIdentifier = item.nativeCalendarItemIdentifier,
-      let record = nativeLookupByCalendarItemID[nativeCalendarItemIdentifier]
-    {
-      return record
+    guard item.footerState == .valid, let canonicalManagedID = item.canonicalManagedID else {
+      return nil
     }
-
-    if let nativeExternalIdentifier = item.nativeExternalIdentifier,
-      let matches = nativeLookupByExternalIdentifier[nativeExternalIdentifier],
-      matches.count == 1
-    {
-      return matches[0]
-    }
-
-    return nil
+    return canonicalRecordsByManagedID[canonicalManagedID]
   }
 
   private func mergeShortcutItem(
@@ -578,7 +565,11 @@ public actor GTDMirrorStore {
       calendarID: canonicalRecord.calendarID,
       listTitle: canonicalRecord.listTitle,
       title: canonicalRecord.title,
+      rawNotes: canonicalRecord.rawNotes ?? item.rawNotes,
       notes: canonicalRecord.notes,
+      notesBody: canonicalRecord.notesBody,
+      canonicalManagedID: canonicalRecord.canonicalManagedID,
+      footerState: canonicalRecord.footerState,
       isCompleted: canonicalRecord.isCompleted,
       completionDate: canonicalRecord.completionDate,
       priority: canonicalRecord.priority,
@@ -688,43 +679,33 @@ public actor GTDMirrorStore {
     Array(Set(items.map(\.identityStatus))).sorted { $0.rawValue < $1.rawValue }
   }
 
-  private func canonicalIdentity(
-    for reminder: NativeReminderRecord,
-    collisionKeys: Set<String>,
-    canonicalizationPolicy: CanonicalizationPolicy
-  ) -> CanonicalIdentity {
-    if let externalIdentifier = reminder.nativeExternalIdentifier,
-      collisionKeys.contains(externalCollisionKey(for: reminder.sourceScopeID, externalIdentifier: externalIdentifier))
-    {
-      return CanonicalIdentity(
-        canonicalID: "collision::\(reminder.sourceScopeID)::\(externalIdentifier)::\(reminder.nativeCalendarItemIdentifier)",
-        identityStatus: .collisionUnresolved
-      )
-    }
-
-    return canonicalizationPolicy.canonicalIdentity(for: reminder)
-  }
-
-  private func externalIdentityCollisionKeys(
-    reminders: [NativeReminderRecord],
-    usingExternalIDs: Bool
-  ) -> Set<String> {
-    guard usingExternalIDs else { return [] }
-
-    let grouped = Dictionary(grouping: reminders.compactMap { reminder -> (String, NativeReminderRecord)? in
-      guard let externalIdentifier = reminder.nativeExternalIdentifier, externalIdentifier.isEmpty == false else {
-        return nil
-      }
-      return (externalCollisionKey(for: reminder.sourceScopeID, externalIdentifier: externalIdentifier), reminder)
-    }, by: { $0.0 })
-
-    return Set(grouped.compactMap { key, values in
-      values.count > 1 ? key : nil
-    })
-  }
-
-  private func externalCollisionKey(for sourceScopeID: String, externalIdentifier: String) -> String {
-    "\(sourceScopeID)::\(externalIdentifier)"
+  private static func ensureManagedFooter(_ reminder: NativeReminderRecord) -> NativeReminderRecord {
+    let normalizedNotes = CanonicalNoteFooter.normalize(
+      rawNotes: reminder.rawNotes ?? reminder.notes,
+      canonicalManagedID: reminder.canonicalManagedID
+    )
+    return NativeReminderRecord(
+      id: reminder.id,
+      sourceKind: reminder.sourceKind,
+      sourceScopeID: reminder.sourceScopeID,
+      calendarID: reminder.calendarID,
+      listTitle: reminder.listTitle,
+      title: reminder.title,
+      rawNotes: normalizedNotes.rawNotes,
+      notes: normalizedNotes.notesBody,
+      notesBody: normalizedNotes.notesBody,
+      canonicalManagedID: normalizedNotes.canonicalManagedID,
+      footerState: normalizedNotes.footerState,
+      isCompleted: reminder.isCompleted,
+      completionDate: reminder.completionDate,
+      priority: reminder.priority,
+      dueDate: reminder.dueDate,
+      createdAt: reminder.createdAt,
+      updatedAt: reminder.updatedAt,
+      url: reminder.url,
+      nativeCalendarItemIdentifier: reminder.nativeCalendarItemIdentifier,
+      nativeExternalIdentifier: reminder.nativeExternalIdentifier
+    )
   }
 }
 

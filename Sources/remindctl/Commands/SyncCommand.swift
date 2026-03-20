@@ -60,7 +60,7 @@ enum SyncCommand {
 
       let store = RemindersStore()
       try await store.requestAccess()
-      let nativeReminders = try await store.nativeReminders()
+      let nativeReminders = try await store.normalizedNativeReminders()
 
       let contractRunner = ShortcutContractRunner()
       let contractPayloads = try selectedContracts.map { contractID in

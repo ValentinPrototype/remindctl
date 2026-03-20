@@ -19,6 +19,7 @@ struct ResolvedShortcutPayload {
 }
 
 final class SQLiteMirrorRepository {
+  private static let schemaVersion: Int64 = 2
   let databaseURL: URL
   private let connection: SQLiteConnection
 
@@ -101,9 +102,9 @@ final class SQLiteMirrorRepository {
   func fetchCanonicalQueryItems() throws -> [GTDQueryItem] {
     let statement = try connection.prepare(
       """
-      SELECT canonical_id, identity_status, title, notes, list_title, is_completed, priority,
-             due_date, created_at, updated_at, matched_semantics_json, observed_tags_json,
-             acquisition_sources_json
+      SELECT canonical_id, identity_status, canonical_managed_id, footer_state, title, raw_notes,
+             notes_body, list_title, is_completed, priority, due_date, created_at, updated_at,
+             matched_semantics_json, observed_tags_json, acquisition_sources_json
       FROM canonical_reminders
       """
     )
@@ -115,18 +116,22 @@ final class SQLiteMirrorRepository {
         GTDQueryItem(
           id: statement.string(at: 0) ?? UUID().uuidString,
           canonicalID: statement.string(at: 0),
-          identityStatus: IdentityStatus(rawValue: statement.string(at: 1) ?? "") ?? .localOnlyUnstable,
-          title: statement.string(at: 2) ?? "",
-          notes: statement.string(at: 3),
-          listTitle: statement.string(at: 4) ?? "",
-          isCompleted: statement.int64(at: 5) == 1,
-          priority: ReminderPriority(rawValue: statement.string(at: 6) ?? "") ?? .none,
-          dueAt: decodeDate(statement.string(at: 7)),
-          createdAt: decodeDate(statement.string(at: 8)),
-          updatedAt: decodeDate(statement.string(at: 9)),
-          matchedSemantics: decodeJSONStringArray(statement.string(at: 10)) ?? [],
-          observedTags: decodeJSONStringArray(statement.string(at: 11)) ?? [],
-          acquisitionSources: decodeJSONStringArray(statement.string(at: 12)) ?? []
+          identityStatus: IdentityStatus(rawValue: statement.string(at: 1) ?? "") ?? .footerInvalid,
+          title: statement.string(at: 4) ?? "",
+          rawNotes: statement.string(at: 5),
+          notes: statement.string(at: 6),
+          notesBody: statement.string(at: 6),
+          canonicalManagedID: statement.string(at: 2),
+          footerState: CanonicalNoteFooterState(rawValue: statement.string(at: 3) ?? "") ?? .missing,
+          listTitle: statement.string(at: 7) ?? "",
+          isCompleted: statement.int64(at: 8) == 1,
+          priority: ReminderPriority(rawValue: statement.string(at: 9) ?? "") ?? .none,
+          dueAt: decodeDate(statement.string(at: 10)),
+          createdAt: decodeDate(statement.string(at: 11)),
+          updatedAt: decodeDate(statement.string(at: 12)),
+          matchedSemantics: decodeJSONStringArray(statement.string(at: 13)) ?? [],
+          observedTags: decodeJSONStringArray(statement.string(at: 14)) ?? [],
+          acquisitionSources: decodeJSONStringArray(statement.string(at: 15)) ?? []
         )
       )
     }
@@ -136,9 +141,10 @@ final class SQLiteMirrorRepository {
   func fetchHierarchyItems() throws -> [GTDQueryItem] {
     let statement = try connection.prepare(
       """
-      SELECT source_item_id, canonical_id, identity_status, title, notes, list_title, is_completed,
-             priority, due_at, created_at, updated_at, matched_semantics_json, observed_tags_json,
-             parent_source_item_id, child_source_item_ids_json
+      SELECT source_item_id, canonical_id, identity_status, canonical_managed_id, footer_state,
+             title, raw_notes, notes_body, list_title, is_completed, priority, due_at, created_at,
+             updated_at, matched_semantics_json, observed_tags_json, parent_source_item_id,
+             child_source_item_ids_json
       FROM shortcut_items
       WHERE contract_id = ?
       """
@@ -150,7 +156,10 @@ final class SQLiteMirrorRepository {
       let sourceItemID: String
       let canonicalID: String?
       let identityStatus: IdentityStatus
+      let canonicalManagedID: String?
+      let footerState: CanonicalNoteFooterState
       let title: String
+      let rawNotes: String?
       let notes: String?
       let listTitle: String
       let isCompleted: Bool
@@ -171,18 +180,21 @@ final class SQLiteMirrorRepository {
           sourceItemID: statement.string(at: 0) ?? UUID().uuidString,
           canonicalID: statement.string(at: 1),
           identityStatus: IdentityStatus(rawValue: statement.string(at: 2) ?? "") ?? .shortcutUnresolved,
-          title: statement.string(at: 3) ?? "",
-          notes: statement.string(at: 4),
-          listTitle: statement.string(at: 5) ?? "",
-          isCompleted: statement.int64(at: 6) == 1,
-          priority: ReminderPriority(rawValue: statement.string(at: 7) ?? "") ?? .none,
-          dueAt: decodeDate(statement.string(at: 8)),
-          createdAt: decodeDate(statement.string(at: 9)),
-          updatedAt: decodeDate(statement.string(at: 10)),
-          matchedSemantics: decodeJSONStringArray(statement.string(at: 11)) ?? [],
-          observedTags: decodeJSONStringArray(statement.string(at: 12)) ?? [],
-          parentSourceItemID: statement.string(at: 13),
-          childSourceItemIDs: decodeJSONStringArray(statement.string(at: 14)) ?? []
+          canonicalManagedID: statement.string(at: 3),
+          footerState: CanonicalNoteFooterState(rawValue: statement.string(at: 4) ?? "") ?? .missing,
+          title: statement.string(at: 5) ?? "",
+          rawNotes: statement.string(at: 6),
+          notes: statement.string(at: 7),
+          listTitle: statement.string(at: 8) ?? "",
+          isCompleted: statement.int64(at: 9) == 1,
+          priority: ReminderPriority(rawValue: statement.string(at: 10) ?? "") ?? .none,
+          dueAt: decodeDate(statement.string(at: 11)),
+          createdAt: decodeDate(statement.string(at: 12)),
+          updatedAt: decodeDate(statement.string(at: 13)),
+          matchedSemantics: decodeJSONStringArray(statement.string(at: 14)) ?? [],
+          observedTags: decodeJSONStringArray(statement.string(at: 15)) ?? [],
+          parentSourceItemID: statement.string(at: 16),
+          childSourceItemIDs: decodeJSONStringArray(statement.string(at: 17)) ?? []
         )
       )
     }
@@ -198,7 +210,11 @@ final class SQLiteMirrorRepository {
         canonicalID: item.canonicalID,
         identityStatus: item.identityStatus,
         title: item.title,
+        rawNotes: item.rawNotes,
         notes: item.notes,
+        notesBody: item.notes,
+        canonicalManagedID: item.canonicalManagedID,
+        footerState: item.footerState,
         listTitle: item.listTitle,
         isCompleted: item.isCompleted,
         priority: item.priority,
@@ -221,8 +237,9 @@ final class SQLiteMirrorRepository {
   func fetchUnresolvedItems(for contractID: ShortcutContractID) throws -> [GTDQueryItem] {
     let statement = try connection.prepare(
       """
-      SELECT source_item_id, identity_status, title, notes, list_title, is_completed, priority,
-             due_at, created_at, updated_at, matched_semantics_json, observed_tags_json
+      SELECT source_item_id, identity_status, canonical_managed_id, footer_state, title, raw_notes,
+             notes_body, list_title, is_completed, priority, due_at, created_at, updated_at,
+             matched_semantics_json, observed_tags_json
       FROM unresolved_shortcut_items
       WHERE contract_id = ?
       """
@@ -238,16 +255,20 @@ final class SQLiteMirrorRepository {
           id: "\(contractID.rawValue)::\(sourceItemID)",
           canonicalID: nil,
           identityStatus: IdentityStatus(rawValue: statement.string(at: 1) ?? "") ?? .shortcutUnresolved,
-          title: statement.string(at: 2) ?? "",
-          notes: statement.string(at: 3),
-          listTitle: statement.string(at: 4) ?? "",
-          isCompleted: statement.int64(at: 5) == 1,
-          priority: ReminderPriority(rawValue: statement.string(at: 6) ?? "") ?? .none,
-          dueAt: decodeDate(statement.string(at: 7)),
-          createdAt: decodeDate(statement.string(at: 8)),
-          updatedAt: decodeDate(statement.string(at: 9)),
-          matchedSemantics: decodeJSONStringArray(statement.string(at: 10)) ?? [],
-          observedTags: decodeJSONStringArray(statement.string(at: 11)) ?? [],
+          title: statement.string(at: 4) ?? "",
+          rawNotes: statement.string(at: 5),
+          notes: statement.string(at: 6),
+          notesBody: statement.string(at: 6),
+          canonicalManagedID: statement.string(at: 2),
+          footerState: CanonicalNoteFooterState(rawValue: statement.string(at: 3) ?? "") ?? .missing,
+          listTitle: statement.string(at: 7) ?? "",
+          isCompleted: statement.int64(at: 8) == 1,
+          priority: ReminderPriority(rawValue: statement.string(at: 9) ?? "") ?? .none,
+          dueAt: decodeDate(statement.string(at: 10)),
+          createdAt: decodeDate(statement.string(at: 11)),
+          updatedAt: decodeDate(statement.string(at: 12)),
+          matchedSemantics: decodeJSONStringArray(statement.string(at: 13)) ?? [],
+          observedTags: decodeJSONStringArray(statement.string(at: 14)) ?? [],
           acquisitionSources: [contractID.rawValue]
         )
       )
@@ -368,6 +389,11 @@ final class SQLiteMirrorRepository {
   }
 
   private func migrate() throws {
+    let currentVersion = try userVersion()
+    if currentVersion < Self.schemaVersion {
+      try resetMirrorSchema()
+    }
+
     try connection.execute(
       """
       CREATE TABLE IF NOT EXISTS sync_runs (
@@ -387,11 +413,14 @@ final class SQLiteMirrorRepository {
         native_calendar_item_identifier TEXT PRIMARY KEY,
         canonical_id TEXT NOT NULL,
         identity_status TEXT NOT NULL,
+        canonical_managed_id TEXT,
+        footer_state TEXT NOT NULL,
         source_scope_id TEXT NOT NULL,
         calendar_id TEXT NOT NULL,
         list_title TEXT NOT NULL,
         title TEXT NOT NULL,
-        notes TEXT,
+        raw_notes TEXT,
+        notes_body TEXT,
         is_completed INTEGER NOT NULL,
         completion_date TEXT,
         priority TEXT NOT NULL,
@@ -422,10 +451,13 @@ final class SQLiteMirrorRepository {
         source_item_id TEXT NOT NULL,
         canonical_id TEXT,
         identity_status TEXT NOT NULL,
+        canonical_managed_id TEXT,
+        footer_state TEXT NOT NULL,
         native_calendar_item_identifier TEXT,
         native_external_identifier TEXT,
         title TEXT NOT NULL,
-        notes TEXT,
+        raw_notes TEXT,
+        notes_body TEXT,
         list_title TEXT NOT NULL,
         is_completed INTEGER NOT NULL,
         priority TEXT NOT NULL,
@@ -444,11 +476,14 @@ final class SQLiteMirrorRepository {
       CREATE TABLE IF NOT EXISTS canonical_reminders (
         canonical_id TEXT PRIMARY KEY,
         identity_status TEXT NOT NULL,
+        canonical_managed_id TEXT,
+        footer_state TEXT NOT NULL,
         source_scope_id TEXT NOT NULL,
         calendar_id TEXT NOT NULL,
         list_title TEXT NOT NULL,
         title TEXT NOT NULL,
-        notes TEXT,
+        raw_notes TEXT,
+        notes_body TEXT,
         is_completed INTEGER NOT NULL,
         completion_date TEXT,
         priority TEXT NOT NULL,
@@ -469,10 +504,13 @@ final class SQLiteMirrorRepository {
         contract_id TEXT NOT NULL,
         source_item_id TEXT NOT NULL,
         identity_status TEXT NOT NULL,
+        canonical_managed_id TEXT,
+        footer_state TEXT NOT NULL,
         native_calendar_item_identifier TEXT,
         native_external_identifier TEXT,
         title TEXT NOT NULL,
-        notes TEXT,
+        raw_notes TEXT,
+        notes_body TEXT,
         list_title TEXT NOT NULL,
         is_completed INTEGER NOT NULL,
         priority TEXT NOT NULL,
@@ -512,6 +550,34 @@ final class SQLiteMirrorRepository {
         updated_at TEXT NOT NULL,
         evidence TEXT
       );
+      """
+    )
+    try setUserVersion(Self.schemaVersion)
+  }
+
+  private func userVersion() throws -> Int64 {
+    let statement = try connection.prepare("PRAGMA user_version")
+    defer { statement.reset() }
+    guard try statement.step() else { return 0 }
+    return statement.int64(at: 0)
+  }
+
+  private func setUserVersion(_ version: Int64) throws {
+    try connection.execute("PRAGMA user_version = \(version)")
+  }
+
+  private func resetMirrorSchema() throws {
+    try connection.execute(
+      """
+      DROP TABLE IF EXISTS sync_runs;
+      DROP TABLE IF EXISTS native_reminders;
+      DROP TABLE IF EXISTS shortcut_contract_runs;
+      DROP TABLE IF EXISTS shortcut_items;
+      DROP TABLE IF EXISTS canonical_reminders;
+      DROP TABLE IF EXISTS unresolved_shortcut_items;
+      DROP TABLE IF EXISTS reminder_relationships;
+      DROP TABLE IF EXISTS local_annotations;
+      DROP TABLE IF EXISTS validation_gates;
       """
     )
   }
@@ -579,31 +645,35 @@ final class SQLiteMirrorRepository {
     let statement = try connection.prepare(
       """
       INSERT INTO native_reminders (
-        native_calendar_item_identifier, canonical_id, identity_status, source_scope_id, calendar_id,
-        list_title, title, notes, is_completed, completion_date, priority, due_date, created_at,
-        updated_at, url, native_external_identifier, last_seen_at, last_native_sync_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        native_calendar_item_identifier, canonical_id, identity_status, canonical_managed_id,
+        footer_state, source_scope_id, calendar_id, list_title, title, raw_notes, notes_body,
+        is_completed, completion_date, priority, due_date, created_at, updated_at, url,
+        native_external_identifier, last_seen_at, last_native_sync_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """
     )
     defer { statement.reset() }
     try statement.bind(reminder.nativeCalendarItemIdentifier, at: 1)
-    try statement.bind(canonicalRecord?.canonicalID ?? reminder.nativeCalendarItemIdentifier, at: 2)
-    try statement.bind(canonicalRecord?.identityStatus.rawValue ?? IdentityStatus.localOnlyUnstable.rawValue, at: 3)
-    try statement.bind(reminder.sourceScopeID, at: 4)
-    try statement.bind(reminder.calendarID, at: 5)
-    try statement.bind(reminder.listTitle, at: 6)
-    try statement.bind(reminder.title, at: 7)
-    try statement.bind(reminder.notes, at: 8)
-    try statement.bind(reminder.isCompleted, at: 9)
-    try statement.bind(reminder.completionDate, at: 10)
-    try statement.bind(reminder.priority.rawValue, at: 11)
-    try statement.bind(reminder.dueDate, at: 12)
-    try statement.bind(reminder.createdAt, at: 13)
-    try statement.bind(reminder.updatedAt, at: 14)
-    try statement.bind(reminder.url, at: 15)
-    try statement.bind(reminder.nativeExternalIdentifier, at: 16)
-    try statement.bind(seenAt, at: 17)
-    try statement.bind(seenAt, at: 18)
+    try statement.bind(canonicalRecord?.canonicalID ?? "managed::\(reminder.canonicalManagedID ?? reminder.nativeCalendarItemIdentifier)", at: 2)
+    try statement.bind(canonicalRecord?.identityStatus.rawValue ?? IdentityStatus.canonicalManaged.rawValue, at: 3)
+    try statement.bind(reminder.canonicalManagedID, at: 4)
+    try statement.bind(reminder.footerState.rawValue, at: 5)
+    try statement.bind(reminder.sourceScopeID, at: 6)
+    try statement.bind(reminder.calendarID, at: 7)
+    try statement.bind(reminder.listTitle, at: 8)
+    try statement.bind(reminder.title, at: 9)
+    try statement.bind(reminder.rawNotes, at: 10)
+    try statement.bind(reminder.notesBody, at: 11)
+    try statement.bind(reminder.isCompleted, at: 12)
+    try statement.bind(reminder.completionDate, at: 13)
+    try statement.bind(reminder.priority.rawValue, at: 14)
+    try statement.bind(reminder.dueDate, at: 15)
+    try statement.bind(reminder.createdAt, at: 16)
+    try statement.bind(reminder.updatedAt, at: 17)
+    try statement.bind(reminder.url, at: 18)
+    try statement.bind(reminder.nativeExternalIdentifier, at: 19)
+    try statement.bind(seenAt, at: 20)
+    try statement.bind(seenAt, at: 21)
     _ = try statement.step()
   }
 
@@ -611,35 +681,39 @@ final class SQLiteMirrorRepository {
     let statement = try connection.prepare(
       """
       INSERT INTO canonical_reminders (
-        canonical_id, identity_status, source_scope_id, calendar_id, list_title, title, notes,
-        is_completed, completion_date, priority, due_date, created_at, updated_at, url,
-        native_calendar_item_identifier, native_external_identifier, matched_semantics_json,
-        observed_tags_json, acquisition_sources_json, last_native_sync_at, last_semantic_sync_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        canonical_id, identity_status, canonical_managed_id, footer_state, source_scope_id, calendar_id,
+        list_title, title, raw_notes, notes_body, is_completed, completion_date, priority, due_date,
+        created_at, updated_at, url, native_calendar_item_identifier, native_external_identifier,
+        matched_semantics_json, observed_tags_json, acquisition_sources_json, last_native_sync_at,
+        last_semantic_sync_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """
     )
     defer { statement.reset() }
     try statement.bind(reminder.canonicalID, at: 1)
     try statement.bind(reminder.identityStatus.rawValue, at: 2)
-    try statement.bind(reminder.sourceScopeID, at: 3)
-    try statement.bind(reminder.calendarID, at: 4)
-    try statement.bind(reminder.listTitle, at: 5)
-    try statement.bind(reminder.title, at: 6)
-    try statement.bind(reminder.notes, at: 7)
-    try statement.bind(reminder.isCompleted, at: 8)
-    try statement.bind(reminder.completionDate, at: 9)
-    try statement.bind(reminder.priority.rawValue, at: 10)
-    try statement.bind(reminder.dueDate, at: 11)
-    try statement.bind(reminder.createdAt, at: 12)
-    try statement.bind(reminder.updatedAt, at: 13)
-    try statement.bind(reminder.url, at: 14)
-    try statement.bind(reminder.nativeCalendarItemIdentifier, at: 15)
-    try statement.bind(reminder.nativeExternalIdentifier, at: 16)
-    try statement.bind(encodeJSONString(reminder.matchedSemantics), at: 17)
-    try statement.bind(encodeJSONString(reminder.observedTags), at: 18)
-    try statement.bind(encodeJSONString(reminder.acquisitionSources), at: 19)
-    try statement.bind(reminder.lastNativeSyncAt, at: 20)
-    try statement.bind(reminder.lastSemanticSyncAt, at: 21)
+    try statement.bind(reminder.canonicalManagedID, at: 3)
+    try statement.bind(reminder.footerState.rawValue, at: 4)
+    try statement.bind(reminder.sourceScopeID, at: 5)
+    try statement.bind(reminder.calendarID, at: 6)
+    try statement.bind(reminder.listTitle, at: 7)
+    try statement.bind(reminder.title, at: 8)
+    try statement.bind(reminder.rawNotes, at: 9)
+    try statement.bind(reminder.notesBody, at: 10)
+    try statement.bind(reminder.isCompleted, at: 11)
+    try statement.bind(reminder.completionDate, at: 12)
+    try statement.bind(reminder.priority.rawValue, at: 13)
+    try statement.bind(reminder.dueDate, at: 14)
+    try statement.bind(reminder.createdAt, at: 15)
+    try statement.bind(reminder.updatedAt, at: 16)
+    try statement.bind(reminder.url, at: 17)
+    try statement.bind(reminder.nativeCalendarItemIdentifier, at: 18)
+    try statement.bind(reminder.nativeExternalIdentifier, at: 19)
+    try statement.bind(encodeJSONString(reminder.matchedSemantics), at: 20)
+    try statement.bind(encodeJSONString(reminder.observedTags), at: 21)
+    try statement.bind(encodeJSONString(reminder.acquisitionSources), at: 22)
+    try statement.bind(reminder.lastNativeSyncAt, at: 23)
+    try statement.bind(reminder.lastSemanticSyncAt, at: 24)
     _ = try statement.step()
   }
 
@@ -697,10 +771,11 @@ final class SQLiteMirrorRepository {
       """
       INSERT INTO shortcut_items (
         contract_run_id, contract_id, source_item_id, canonical_id, identity_status,
-        native_calendar_item_identifier, native_external_identifier, title, notes, list_title,
-        is_completed, priority, due_at, created_at, updated_at, url, matched_semantics_json,
-        observed_tags_json, parent_source_item_id, child_source_item_ids_json, inserted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        canonical_managed_id, footer_state, native_calendar_item_identifier,
+        native_external_identifier, title, raw_notes, notes_body, list_title, is_completed, priority,
+        due_at, created_at, updated_at, url, matched_semantics_json, observed_tags_json,
+        parent_source_item_id, child_source_item_ids_json, inserted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """
     )
     defer { statement.reset() }
@@ -709,22 +784,25 @@ final class SQLiteMirrorRepository {
     try statement.bind(resolvedItem.item.sourceItemID, at: 3)
     try statement.bind(resolvedItem.record.canonicalID, at: 4)
     try statement.bind(resolvedItem.record.identityStatus.rawValue, at: 5)
-    try statement.bind(resolvedItem.item.nativeCalendarItemIdentifier, at: 6)
-    try statement.bind(resolvedItem.item.nativeExternalIdentifier, at: 7)
-    try statement.bind(resolvedItem.item.title, at: 8)
-    try statement.bind(resolvedItem.item.notes, at: 9)
-    try statement.bind(resolvedItem.item.listTitle, at: 10)
-    try statement.bind(resolvedItem.item.isCompleted, at: 11)
-    try statement.bind(resolvedItem.item.priority.rawValue, at: 12)
-    try statement.bind(resolvedItem.item.dueAt, at: 13)
-    try statement.bind(resolvedItem.item.createdAt, at: 14)
-    try statement.bind(resolvedItem.item.updatedAt, at: 15)
-    try statement.bind(resolvedItem.item.url, at: 16)
-    try statement.bind(encodeJSONString(resolvedItem.item.matchedSemantics), at: 17)
-    try statement.bind(encodeJSONString(resolvedItem.item.observedTags ?? []), at: 18)
-    try statement.bind(resolvedItem.item.parentSourceItemID, at: 19)
-    try statement.bind(encodeJSONString(resolvedItem.item.childSourceItemIDs), at: 20)
-    try statement.bind(insertedAt, at: 21)
+    try statement.bind(resolvedItem.record.canonicalManagedID, at: 6)
+    try statement.bind(resolvedItem.record.footerState.rawValue, at: 7)
+    try statement.bind(resolvedItem.item.nativeCalendarItemIdentifier, at: 8)
+    try statement.bind(resolvedItem.item.nativeExternalIdentifier, at: 9)
+    try statement.bind(resolvedItem.item.title, at: 10)
+    try statement.bind(resolvedItem.item.rawNotes, at: 11)
+    try statement.bind(resolvedItem.item.notesBody, at: 12)
+    try statement.bind(resolvedItem.item.listTitle, at: 13)
+    try statement.bind(resolvedItem.item.isCompleted, at: 14)
+    try statement.bind(resolvedItem.item.priority.rawValue, at: 15)
+    try statement.bind(resolvedItem.item.dueAt, at: 16)
+    try statement.bind(resolvedItem.item.createdAt, at: 17)
+    try statement.bind(resolvedItem.item.updatedAt, at: 18)
+    try statement.bind(resolvedItem.item.url, at: 19)
+    try statement.bind(encodeJSONString(resolvedItem.item.matchedSemantics), at: 20)
+    try statement.bind(encodeJSONString(resolvedItem.item.observedTags ?? []), at: 21)
+    try statement.bind(resolvedItem.item.parentSourceItemID, at: 22)
+    try statement.bind(encodeJSONString(resolvedItem.item.childSourceItemIDs), at: 23)
+    try statement.bind(insertedAt, at: 24)
     _ = try statement.step()
   }
 
@@ -735,33 +813,37 @@ final class SQLiteMirrorRepository {
     let statement = try connection.prepare(
       """
       INSERT INTO unresolved_shortcut_items (
-        contract_id, source_item_id, identity_status, native_calendar_item_identifier,
-        native_external_identifier, title, notes, list_title, is_completed, priority, due_at,
-        created_at, updated_at, url, matched_semantics_json, observed_tags_json,
-        parent_source_item_id, child_source_item_ids_json, inserted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        contract_id, source_item_id, identity_status, canonical_managed_id, footer_state,
+        native_calendar_item_identifier, native_external_identifier, title, raw_notes, notes_body,
+        list_title, is_completed, priority, due_at, created_at, updated_at, url,
+        matched_semantics_json, observed_tags_json, parent_source_item_id,
+        child_source_item_ids_json, inserted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """
     )
     defer { statement.reset() }
     try statement.bind(resolvedItem.contractID.rawValue, at: 1)
     try statement.bind(resolvedItem.item.sourceItemID, at: 2)
-    try statement.bind(IdentityStatus.shortcutUnresolved.rawValue, at: 3)
-    try statement.bind(resolvedItem.item.nativeCalendarItemIdentifier, at: 4)
-    try statement.bind(resolvedItem.item.nativeExternalIdentifier, at: 5)
-    try statement.bind(resolvedItem.item.title, at: 6)
-    try statement.bind(resolvedItem.item.notes, at: 7)
-    try statement.bind(resolvedItem.item.listTitle, at: 8)
-    try statement.bind(resolvedItem.item.isCompleted, at: 9)
-    try statement.bind(resolvedItem.item.priority.rawValue, at: 10)
-    try statement.bind(resolvedItem.item.dueAt, at: 11)
-    try statement.bind(resolvedItem.item.createdAt, at: 12)
-    try statement.bind(resolvedItem.item.updatedAt, at: 13)
-    try statement.bind(resolvedItem.item.url, at: 14)
-    try statement.bind(encodeJSONString(resolvedItem.item.matchedSemantics), at: 15)
-    try statement.bind(encodeJSONString(resolvedItem.item.observedTags ?? []), at: 16)
-    try statement.bind(resolvedItem.item.parentSourceItemID, at: 17)
-    try statement.bind(encodeJSONString(resolvedItem.item.childSourceItemIDs), at: 18)
-    try statement.bind(insertedAt, at: 19)
+    try statement.bind(resolvedItem.record.identityStatus.rawValue, at: 3)
+    try statement.bind(resolvedItem.record.canonicalManagedID, at: 4)
+    try statement.bind(resolvedItem.record.footerState.rawValue, at: 5)
+    try statement.bind(resolvedItem.item.nativeCalendarItemIdentifier, at: 6)
+    try statement.bind(resolvedItem.item.nativeExternalIdentifier, at: 7)
+    try statement.bind(resolvedItem.item.title, at: 8)
+    try statement.bind(resolvedItem.item.rawNotes, at: 9)
+    try statement.bind(resolvedItem.item.notesBody, at: 10)
+    try statement.bind(resolvedItem.item.listTitle, at: 11)
+    try statement.bind(resolvedItem.item.isCompleted, at: 12)
+    try statement.bind(resolvedItem.item.priority.rawValue, at: 13)
+    try statement.bind(resolvedItem.item.dueAt, at: 14)
+    try statement.bind(resolvedItem.item.createdAt, at: 15)
+    try statement.bind(resolvedItem.item.updatedAt, at: 16)
+    try statement.bind(resolvedItem.item.url, at: 17)
+    try statement.bind(encodeJSONString(resolvedItem.item.matchedSemantics), at: 18)
+    try statement.bind(encodeJSONString(resolvedItem.item.observedTags ?? []), at: 19)
+    try statement.bind(resolvedItem.item.parentSourceItemID, at: 20)
+    try statement.bind(encodeJSONString(resolvedItem.item.childSourceItemIDs), at: 21)
+    try statement.bind(insertedAt, at: 22)
     _ = try statement.step()
   }
 

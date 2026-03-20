@@ -6,9 +6,9 @@ public enum AcquisitionSourceKind: String, Codable, Sendable, CaseIterable {
 }
 
 public enum IdentityStatus: String, Codable, Sendable, CaseIterable {
-  case canonicalExternal = "canonical_external"
-  case localOnlyUnstable = "local_only_unstable"
+  case canonicalManaged = "canonical_managed"
   case shortcutUnresolved = "shortcut_unresolved"
+  case footerInvalid = "footer_invalid"
   case collisionUnresolved = "collision_unresolved"
 }
 
@@ -46,9 +46,9 @@ public enum ValidationGateID: String, Codable, CaseIterable, Sendable {
     case .g2HierarchyVisibility:
       return "Hierarchy visibility gate"
     case .g3ShortcutIdentifier:
-      return "Shortcut identifier gate"
+      return "Shortcut note footer gate"
     case .g4ExternalIDReliability:
-      return "External-ID reliability gate"
+      return "Native evidence reliability gate"
     case .g5LastModifiedReliability:
       return "Last-modified reliability gate"
     }
@@ -61,9 +61,9 @@ public enum ValidationGateID: String, Codable, CaseIterable, Sendable {
     case .g2HierarchyVisibility:
       return "Required before hierarchy-derived diagnostics may ship."
     case .g3ShortcutIdentifier:
-      return "Controls whether Shortcut payloads may be promoted into canonical joins."
+      return "Controls whether Shortcut notes preserve the canonical footer well enough for joins."
     case .g4ExternalIDReliability:
-      return "Controls whether external identifiers may be preferred over local IDs."
+      return "Controls how much native identifier evidence may be trusted."
     case .g5LastModifiedReliability:
       return "Controls whether native updated-at logic may be trusted."
     }
@@ -180,7 +180,11 @@ public struct NativeReminderRecord: Identifiable, Codable, Sendable, Equatable {
   public let calendarID: String
   public let listTitle: String
   public let title: String
+  public let rawNotes: String?
   public let notes: String?
+  public let notesBody: String?
+  public let canonicalManagedID: String?
+  public let footerState: CanonicalNoteFooterState
   public let isCompleted: Bool
   public let completionDate: Date?
   public let priority: ReminderPriority
@@ -198,7 +202,11 @@ public struct NativeReminderRecord: Identifiable, Codable, Sendable, Equatable {
     calendarID: String,
     listTitle: String,
     title: String,
+    rawNotes: String? = nil,
     notes: String?,
+    notesBody: String? = nil,
+    canonicalManagedID: String? = nil,
+    footerState: CanonicalNoteFooterState = .missing,
     isCompleted: Bool,
     completionDate: Date?,
     priority: ReminderPriority,
@@ -215,7 +223,11 @@ public struct NativeReminderRecord: Identifiable, Codable, Sendable, Equatable {
     self.calendarID = calendarID
     self.listTitle = listTitle
     self.title = title
-    self.notes = notes
+    self.rawNotes = rawNotes ?? notes
+    self.notes = notesBody ?? notes
+    self.notesBody = notesBody ?? notes
+    self.canonicalManagedID = canonicalManagedID
+    self.footerState = footerState
     self.isCompleted = isCompleted
     self.completionDate = completionDate
     self.priority = priority
@@ -243,7 +255,11 @@ public struct ShortcutContractItem: Codable, Sendable, Equatable {
   public let nativeCalendarItemIdentifier: String?
   public let nativeExternalIdentifier: String?
   public let title: String
+  public let rawNotes: String?
   public let notes: String?
+  public let notesBody: String?
+  public let canonicalManagedID: String?
+  public let footerState: CanonicalNoteFooterState
   public let listTitle: String
   public let isCompleted: Bool
   public let priority: ReminderPriority
@@ -261,7 +277,11 @@ public struct ShortcutContractItem: Codable, Sendable, Equatable {
     nativeCalendarItemIdentifier: String?,
     nativeExternalIdentifier: String?,
     title: String,
+    rawNotes: String? = nil,
     notes: String?,
+    notesBody: String? = nil,
+    canonicalManagedID: String? = nil,
+    footerState: CanonicalNoteFooterState = .missing,
     listTitle: String,
     isCompleted: Bool,
     priority: ReminderPriority,
@@ -278,7 +298,11 @@ public struct ShortcutContractItem: Codable, Sendable, Equatable {
     self.nativeCalendarItemIdentifier = nativeCalendarItemIdentifier
     self.nativeExternalIdentifier = nativeExternalIdentifier
     self.title = title
-    self.notes = notes
+    self.rawNotes = rawNotes ?? notes
+    self.notes = notesBody ?? notes
+    self.notesBody = notesBody ?? notes
+    self.canonicalManagedID = canonicalManagedID
+    self.footerState = footerState
     self.listTitle = listTitle
     self.isCompleted = isCompleted
     self.priority = priority
@@ -329,7 +353,11 @@ public struct CanonicalReminderRecord: Identifiable, Codable, Sendable, Equatabl
   public let calendarID: String
   public let listTitle: String
   public let title: String
+  public let rawNotes: String?
   public let notes: String?
+  public let notesBody: String?
+  public let canonicalManagedID: String?
+  public let footerState: CanonicalNoteFooterState
   public let isCompleted: Bool
   public let completionDate: Date?
   public let priority: ReminderPriority
@@ -353,7 +381,11 @@ public struct CanonicalReminderRecord: Identifiable, Codable, Sendable, Equatabl
     calendarID: String,
     listTitle: String,
     title: String,
+    rawNotes: String? = nil,
     notes: String?,
+    notesBody: String? = nil,
+    canonicalManagedID: String? = nil,
+    footerState: CanonicalNoteFooterState = .missing,
     isCompleted: Bool,
     completionDate: Date?,
     priority: ReminderPriority,
@@ -376,7 +408,11 @@ public struct CanonicalReminderRecord: Identifiable, Codable, Sendable, Equatabl
     self.calendarID = calendarID
     self.listTitle = listTitle
     self.title = title
-    self.notes = notes
+    self.rawNotes = rawNotes ?? notes
+    self.notes = notesBody ?? notes
+    self.notesBody = notesBody ?? notes
+    self.canonicalManagedID = canonicalManagedID
+    self.footerState = footerState
     self.isCompleted = isCompleted
     self.completionDate = completionDate
     self.priority = priority
@@ -402,7 +438,11 @@ public struct UnresolvedShortcutRecord: Identifiable, Codable, Sendable, Equatab
   public let nativeCalendarItemIdentifier: String?
   public let nativeExternalIdentifier: String?
   public let title: String
+  public let rawNotes: String?
   public let notes: String?
+  public let notesBody: String?
+  public let canonicalManagedID: String?
+  public let footerState: CanonicalNoteFooterState
   public let listTitle: String
   public let isCompleted: Bool
   public let priority: ReminderPriority
@@ -424,7 +464,11 @@ public struct UnresolvedShortcutRecord: Identifiable, Codable, Sendable, Equatab
     nativeCalendarItemIdentifier: String?,
     nativeExternalIdentifier: String?,
     title: String,
+    rawNotes: String? = nil,
     notes: String?,
+    notesBody: String? = nil,
+    canonicalManagedID: String? = nil,
+    footerState: CanonicalNoteFooterState = .missing,
     listTitle: String,
     isCompleted: Bool,
     priority: ReminderPriority,
@@ -445,7 +489,11 @@ public struct UnresolvedShortcutRecord: Identifiable, Codable, Sendable, Equatab
     self.nativeCalendarItemIdentifier = nativeCalendarItemIdentifier
     self.nativeExternalIdentifier = nativeExternalIdentifier
     self.title = title
-    self.notes = notes
+    self.rawNotes = rawNotes ?? notes
+    self.notes = notesBody ?? notes
+    self.notesBody = notesBody ?? notes
+    self.canonicalManagedID = canonicalManagedID
+    self.footerState = footerState
     self.listTitle = listTitle
     self.isCompleted = isCompleted
     self.priority = priority
@@ -479,7 +527,11 @@ public struct GTDQueryItem: Identifiable, Codable, Sendable, Equatable {
   public let canonicalID: String?
   public let identityStatus: IdentityStatus
   public let title: String
+  public let rawNotes: String?
   public let notes: String?
+  public let notesBody: String?
+  public let canonicalManagedID: String?
+  public let footerState: CanonicalNoteFooterState
   public let listTitle: String
   public let isCompleted: Bool
   public let priority: ReminderPriority
@@ -500,7 +552,11 @@ public struct GTDQueryItem: Identifiable, Codable, Sendable, Equatable {
     canonicalID: String?,
     identityStatus: IdentityStatus,
     title: String,
+    rawNotes: String? = nil,
     notes: String?,
+    notesBody: String? = nil,
+    canonicalManagedID: String? = nil,
+    footerState: CanonicalNoteFooterState = .missing,
     listTitle: String,
     isCompleted: Bool,
     priority: ReminderPriority,
@@ -520,7 +576,11 @@ public struct GTDQueryItem: Identifiable, Codable, Sendable, Equatable {
     self.canonicalID = canonicalID
     self.identityStatus = identityStatus
     self.title = title
-    self.notes = notes
+    self.rawNotes = rawNotes ?? notes
+    self.notes = notesBody ?? notes
+    self.notesBody = notesBody ?? notes
+    self.canonicalManagedID = canonicalManagedID
+    self.footerState = footerState
     self.listTitle = listTitle
     self.isCompleted = isCompleted
     self.priority = priority

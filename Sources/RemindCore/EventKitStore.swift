@@ -1,4 +1,4 @@
-import EventKit
+@preconcurrency import EventKit
 import Foundation
 
 public actor RemindersStore {
@@ -52,31 +52,17 @@ public actor RemindersStore {
   }
 
   public func reminders(in listName: String? = nil) async throws -> [ReminderItem] {
-    let calendars: [EKCalendar]
-    if let listName {
-      calendars = eventStore.calendars(for: .reminder).filter { $0.title == listName }
-      if calendars.isEmpty {
-        throw RemindCoreError.listNotFound(listName)
-      }
-    } else {
-      calendars = eventStore.calendars(for: .reminder)
-    }
-
+    let calendars = try calendars(for: listName)
     return await fetchReminders(in: calendars)
   }
 
   public func nativeReminders(in listName: String? = nil) async throws -> [NativeReminderRecord] {
-    let calendars: [EKCalendar]
-    if let listName {
-      calendars = eventStore.calendars(for: .reminder).filter { $0.title == listName }
-      if calendars.isEmpty {
-        throw RemindCoreError.listNotFound(listName)
-      }
-    } else {
-      calendars = eventStore.calendars(for: .reminder)
-    }
+    try await normalizedNativeReminders(in: listName)
+  }
 
-    return await fetchNativeReminders(in: calendars)
+  public func normalizedNativeReminders(in listName: String? = nil) async throws -> [NativeReminderRecord] {
+    let calendars = try calendars(for: listName)
+    return try await ensureCanonicalManagedNotes(in: calendars)
   }
 
   public func createList(name: String) async throws -> ReminderList {
@@ -111,34 +97,33 @@ public actor RemindersStore {
     let calendar = try calendar(named: listName)
     let reminder = EKReminder(eventStore: eventStore)
     reminder.title = draft.title
-    reminder.notes = draft.notes
+    reminder.notes = CanonicalNoteFooter.normalize(rawNotes: draft.notes).rawNotes
     reminder.calendar = calendar
     reminder.priority = draft.priority.eventKitValue
     if let dueDate = draft.dueDate {
       reminder.dueDateComponents = calendarComponents(from: dueDate)
     }
     try eventStore.save(reminder, commit: true)
-    return ReminderItem(
-      id: reminder.calendarItemIdentifier,
-      title: reminder.title ?? "",
-      notes: reminder.notes,
-      isCompleted: reminder.isCompleted,
-      completionDate: reminder.completionDate,
-      priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
-      dueDate: date(from: reminder.dueDateComponents),
-      listID: reminder.calendar.calendarIdentifier,
-      listName: reminder.calendar.title
-    )
+    return item(from: reminder)
   }
 
   public func updateReminder(id: String, update: ReminderUpdate) async throws -> ReminderItem {
     let reminder = try reminder(withID: id)
+    let existingNotes = CanonicalNoteFooter.parse(rawNotes: reminder.notes)
 
     if let title = update.title {
       reminder.title = title
     }
     if let notes = update.notes {
-      reminder.notes = notes
+      reminder.notes = CanonicalNoteFooter.normalize(
+        rawNotes: notes,
+        canonicalManagedID: existingNotes.canonicalManagedID
+      ).rawNotes
+    } else {
+      reminder.notes = CanonicalNoteFooter.normalize(
+        rawNotes: reminder.notes,
+        canonicalManagedID: existingNotes.canonicalManagedID
+      ).rawNotes
     }
     if let dueDateUpdate = update.dueDate {
       if let dueDate = dueDateUpdate {
@@ -159,38 +144,21 @@ public actor RemindersStore {
 
     try eventStore.save(reminder, commit: true)
 
-    return ReminderItem(
-      id: reminder.calendarItemIdentifier,
-      title: reminder.title ?? "",
-      notes: reminder.notes,
-      isCompleted: reminder.isCompleted,
-      completionDate: reminder.completionDate,
-      priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
-      dueDate: date(from: reminder.dueDateComponents),
-      listID: reminder.calendar.calendarIdentifier,
-      listName: reminder.calendar.title
-    )
+    return item(from: reminder)
   }
 
   public func completeReminders(ids: [String]) async throws -> [ReminderItem] {
     var updated: [ReminderItem] = []
     for id in ids {
       let reminder = try reminder(withID: id)
+      let existingNotes = CanonicalNoteFooter.parse(rawNotes: reminder.notes)
+      reminder.notes = CanonicalNoteFooter.normalize(
+        rawNotes: reminder.notes,
+        canonicalManagedID: existingNotes.canonicalManagedID
+      ).rawNotes
       reminder.isCompleted = true
       try eventStore.save(reminder, commit: true)
-      updated.append(
-        ReminderItem(
-          id: reminder.calendarItemIdentifier,
-          title: reminder.title ?? "",
-          notes: reminder.notes,
-          isCompleted: reminder.isCompleted,
-          completionDate: reminder.completionDate,
-          priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
-          dueDate: date(from: reminder.dueDateComponents),
-          listID: reminder.calendar.calendarIdentifier,
-          listName: reminder.calendar.title
-        )
-      )
+      updated.append(item(from: reminder))
     }
     return updated
   }
@@ -234,10 +202,11 @@ public actor RemindersStore {
       let predicate = eventStore.predicateForReminders(in: calendars)
       eventStore.fetchReminders(matching: predicate) { reminders in
         let data = (reminders ?? []).map { reminder in
-          ReminderData(
+          let parsedNotes = CanonicalNoteFooter.parse(rawNotes: reminder.notes)
+          return ReminderData(
             id: reminder.calendarItemIdentifier,
             title: reminder.title ?? "",
-            notes: reminder.notes,
+            notes: parsedNotes.notesBody,
             isCompleted: reminder.isCompleted,
             completionDate: reminder.completionDate,
             priority: Int(reminder.priority),
@@ -271,7 +240,11 @@ public actor RemindersStore {
       let calendarID: String
       let listTitle: String
       let title: String
+      let rawNotes: String?
       let notes: String?
+      let notesBody: String?
+      let canonicalManagedID: String?
+      let footerState: CanonicalNoteFooterState
       let isCompleted: Bool
       let completionDate: Date?
       let priority: Int
@@ -292,12 +265,17 @@ public actor RemindersStore {
             return nil
           }
 
+          let parsedNotes = CanonicalNoteFooter.parse(rawNotes: reminder.notes)
           return ReminderData(
             sourceScopeID: sourceIdentifier,
             calendarID: reminder.calendar.calendarIdentifier,
             listTitle: reminder.calendar.title,
             title: reminder.title ?? "",
-            notes: reminder.notes,
+            rawNotes: parsedNotes.rawNotes,
+            notes: parsedNotes.notesBody,
+            notesBody: parsedNotes.notesBody,
+            canonicalManagedID: parsedNotes.canonicalManagedID,
+            footerState: parsedNotes.footerState,
             isCompleted: reminder.isCompleted,
             completionDate: reminder.completionDate,
             priority: Int(reminder.priority),
@@ -320,7 +298,11 @@ public actor RemindersStore {
         calendarID: data.calendarID,
         listTitle: data.listTitle,
         title: data.title,
+        rawNotes: data.rawNotes,
         notes: data.notes,
+        notesBody: data.notesBody,
+        canonicalManagedID: data.canonicalManagedID,
+        footerState: data.footerState,
         isCompleted: data.isCompleted,
         completionDate: data.completionDate,
         priority: ReminderPriority(eventKitValue: data.priority),
@@ -331,6 +313,71 @@ public actor RemindersStore {
         nativeCalendarItemIdentifier: data.nativeCalendarItemIdentifier,
         nativeExternalIdentifier: data.nativeExternalIdentifier
       )
+    }
+  }
+
+  private func ensureCanonicalManagedNotes(in calendars: [EKCalendar]) async throws -> [NativeReminderRecord] {
+    let reminderIDs = await fetchReminderIdentifiers(in: calendars)
+    var didMutate = false
+
+    for reminderID in reminderIDs {
+      let reminder = try reminder(withID: reminderID)
+      let existingNotes = CanonicalNoteFooter.parse(rawNotes: reminder.notes)
+      let normalizedNotes = CanonicalNoteFooter.normalize(
+        rawNotes: reminder.notes,
+        canonicalManagedID: existingNotes.canonicalManagedID
+      )
+      if normalizedNotes.rawNotes != reminder.notes {
+        reminder.notes = normalizedNotes.rawNotes
+        try eventStore.save(reminder, commit: true)
+        didMutate = true
+      }
+    }
+
+    if didMutate {
+      return await fetchNativeReminders(in: calendars)
+    }
+
+    return reminderIDs.compactMap { reminderID in
+      guard let reminder = try? reminder(withID: reminderID) else {
+        return nil
+      }
+      let sourceIdentifier = reminder.calendar.source.sourceIdentifier
+      guard sourceIdentifier.isEmpty == false else {
+        return nil
+      }
+
+      let parsedNotes = CanonicalNoteFooter.parse(rawNotes: reminder.notes)
+      return NativeReminderRecord(
+        id: reminder.calendarItemIdentifier,
+        sourceScopeID: sourceIdentifier,
+        calendarID: reminder.calendar.calendarIdentifier,
+        listTitle: reminder.calendar.title,
+        title: reminder.title ?? "",
+        rawNotes: parsedNotes.rawNotes,
+        notes: parsedNotes.notesBody,
+        notesBody: parsedNotes.notesBody,
+        canonicalManagedID: parsedNotes.canonicalManagedID,
+        footerState: parsedNotes.footerState,
+        isCompleted: reminder.isCompleted,
+        completionDate: reminder.completionDate,
+        priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
+        dueDate: date(from: reminder.dueDateComponents),
+        createdAt: reminder.creationDate,
+        updatedAt: reminder.lastModifiedDate,
+        url: reminder.url?.absoluteString,
+        nativeCalendarItemIdentifier: reminder.calendarItemIdentifier,
+        nativeExternalIdentifier: reminder.calendarItemExternalIdentifier
+      )
+    }
+  }
+
+  private func fetchReminderIdentifiers(in calendars: [EKCalendar]) async -> [String] {
+    await withCheckedContinuation { (continuation: CheckedContinuation<[String], Never>) in
+      let predicate = eventStore.predicateForReminders(in: calendars)
+      eventStore.fetchReminders(matching: predicate) { reminders in
+        continuation.resume(returning: (reminders ?? []).map(\.calendarItemIdentifier))
+      }
     }
   }
 
@@ -349,6 +396,17 @@ public actor RemindersStore {
     return calendar
   }
 
+  private func calendars(for listName: String?) throws -> [EKCalendar] {
+    if let listName {
+      let calendars = eventStore.calendars(for: .reminder).filter { $0.title == listName }
+      if calendars.isEmpty {
+        throw RemindCoreError.listNotFound(listName)
+      }
+      return calendars
+    }
+    return eventStore.calendars(for: .reminder)
+  }
+
   private func calendarComponents(from date: Date) -> DateComponents {
     calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
   }
@@ -359,10 +417,11 @@ public actor RemindersStore {
   }
 
   private func item(from reminder: EKReminder) -> ReminderItem {
-    ReminderItem(
+    let parsedNotes = CanonicalNoteFooter.parse(rawNotes: reminder.notes)
+    return ReminderItem(
       id: reminder.calendarItemIdentifier,
       title: reminder.title ?? "",
-      notes: reminder.notes,
+      notes: parsedNotes.notesBody,
       isCompleted: reminder.isCompleted,
       completionDate: reminder.completionDate,
       priority: ReminderPriority(eventKitValue: Int(reminder.priority)),

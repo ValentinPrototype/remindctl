@@ -18,7 +18,7 @@ struct ShortcutContractValidatorTests {
             "native_calendar_item_identifier": "native-1",
             "native_external_identifier": "external-1",
             "title": "Launch billing cleanup",
-            "notes": null,
+            "notes": "Launch billing cleanup\\n\\n[remindctl-gtd:v1 id=550e8400-e29b-41d4-a716-446655440000]",
             "list_title": "Work",
             "is_completed": false,
             "priority": "medium",
@@ -44,6 +44,9 @@ struct ShortcutContractValidatorTests {
     #expect(validated.status == .ok)
     #expect(validated.items.count == 1)
     #expect(validated.items.first?.matchedSemantics == ["active-project"])
+    #expect(validated.items.first?.notes == "Launch billing cleanup")
+    #expect(validated.items.first?.canonicalManagedID == "550e8400-e29b-41d4-a716-446655440000")
+    #expect(validated.items.first?.footerState == .valid)
   }
 
   @Test("Reject semantic contract with invalid completion state")

@@ -1,0 +1,15 @@
+{
+  "contract_id": "shortcut.productivity_hierarchy.v1",
+  "contract_version": "v1",
+  "generated_at": "2026-03-20T12:00:00Z",
+  "status": "error",
+  "items": [],
+  "warnings": [],
+  "errors": [
+    {
+      "code": "shortcut.execution_failed",
+      "message": "The Productivity Hierarchy shortcut could not finish reading Reminders.",
+      "retryable": true
+    }
+  ]
+}

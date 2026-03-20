@@ -29,6 +29,36 @@ make check                     # lint + test + coverage gate
 - Swift 6.2+
 - Reminders permission (System Settings → Privacy & Security → Reminders)
 
+## Tag Search Setup
+Tag search is powered by an Apple Shortcut helper. The transport shortcut must be installed in the
+Shortcuts app with this exact name:
+
+`remindctl - Search Reminders By Tag with JSON Output`
+
+Install steps:
+- Open [Support/Shortcuts/remindctl - Search Reminders By Tag with JSON Output.shortcut](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/remindctl%20-%20Search%20Reminders%20By%20Tag%20with%20JSON%20Output.shortcut) in Finder, or drag it into the Shortcuts app.
+- Click `Add Shortcut` when macOS asks to import it.
+- Do not rename the shortcut after import.
+
+Once installed, tag search works like this:
+
+```bash
+remindctl show --tag active-project
+remindctl show --tag active-project --tag area-work
+remindctl show completed --tag active-project
+```
+
+If the shortcut is missing or renamed, `remindctl` fails with a setup error explaining that
+the helper shortcut is required for `--tag` searches.
+
+## GTD Shortcut Assets
+The long-term GTD Shortcut contract catalog, fixtures, and shipped assets live under
+[Support/Shortcuts](/Users/vk/work/openclaw/remindctl/Support/Shortcuts).
+
+Use:
+- [Support/Shortcuts/README.md](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/README.md) for install and ownership rules
+- [Support/Shortcuts/REQUIRED_SHORTCUTS.md](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/REQUIRED_SHORTCUTS.md) for the cross-team contract list
+
 ## Usage
 ```bash
 remindctl                      # show today (default)

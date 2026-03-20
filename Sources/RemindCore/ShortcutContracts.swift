@@ -219,12 +219,18 @@ public enum ShortcutContractValidator {
       )
     }
 
+    let parsedNotes = CanonicalNoteFooter.parse(rawNotes: rawItem.notes)
+
     return ShortcutContractItem(
       sourceItemID: rawItem.sourceItemID,
       nativeCalendarItemIdentifier: rawItem.nativeCalendarItemIdentifier,
       nativeExternalIdentifier: rawItem.nativeExternalIdentifier,
       title: rawItem.title,
-      notes: rawItem.notes,
+      rawNotes: parsedNotes.rawNotes,
+      notes: parsedNotes.notesBody,
+      notesBody: parsedNotes.notesBody,
+      canonicalManagedID: parsedNotes.canonicalManagedID,
+      footerState: parsedNotes.footerState,
       listTitle: rawItem.listTitle,
       isCompleted: rawItem.isCompleted,
       priority: priority,

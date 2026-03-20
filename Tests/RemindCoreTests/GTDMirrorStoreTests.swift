@@ -88,6 +88,8 @@ struct GTDMirrorStoreTests {
   func semanticRowsJoinNativeMirror() async throws {
     let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
     let now = Date(timeIntervalSince1970: 1_742_472_000)
+    let canonicalManagedID = "550e8400-e29b-41d4-a716-446655440000"
+    let sharedNotes = managedNotes(body: "Launch billing cleanup", canonicalManagedID: canonicalManagedID)
 
     _ = try await store.setValidationGate(.g1TagVisibility, state: .passed)
     _ = try await store.setValidationGate(.g3ShortcutIdentifier, state: .passed)
@@ -96,6 +98,7 @@ struct GTDMirrorStoreTests {
       sampleNativeReminder(
         id: "native-1",
         title: "Launch billing cleanup",
+        notes: sharedNotes,
         createdAt: now.addingTimeInterval(-15 * 86_400),
         updatedAt: now.addingTimeInterval(-2 * 86_400)
       )
@@ -112,7 +115,11 @@ struct GTDMirrorStoreTests {
           nativeCalendarItemIdentifier: "native-1",
           nativeExternalIdentifier: nil,
           title: "Launch billing cleanup",
-          notes: nil,
+          rawNotes: sharedNotes,
+          notes: "Launch billing cleanup",
+          notesBody: "Launch billing cleanup",
+          canonicalManagedID: canonicalManagedID,
+          footerState: .valid,
           listTitle: "Work",
           isCompleted: false,
           priority: .medium,
@@ -141,6 +148,7 @@ struct GTDMirrorStoreTests {
     #expect(result.confidence == .medium)
     #expect(result.items.count == 1)
     #expect(result.items.first?.canonicalID != nil)
+    #expect(result.items.first?.identityStatus == .canonicalManaged)
     #expect(result.items.first?.matchedSemantics == ["active-project"])
   }
 
@@ -148,6 +156,8 @@ struct GTDMirrorStoreTests {
   func hierarchyQueryUsesHierarchyContract() async throws {
     let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
     let now = Date(timeIntervalSince1970: 1_742_472_000)
+    let parentManagedID = "11111111-1111-4111-8111-111111111111"
+    let childManagedID = "22222222-2222-4222-8222-222222222222"
 
     let blocked = try await store.queryHierarchy(now: now)
     #expect(blocked.status == .unsupported)
@@ -160,12 +170,14 @@ struct GTDMirrorStoreTests {
       sampleNativeReminder(
         id: "native-parent",
         title: "Launch billing cleanup",
+        notes: managedNotes(body: "Parent", canonicalManagedID: parentManagedID),
         createdAt: now.addingTimeInterval(-15 * 86_400),
         updatedAt: now.addingTimeInterval(-2 * 86_400)
       ),
       sampleNativeReminder(
         id: "native-child",
         title: "Call vendor",
+        notes: managedNotes(body: "Child", canonicalManagedID: childManagedID),
         createdAt: now.addingTimeInterval(-10 * 86_400),
         updatedAt: now.addingTimeInterval(-1 * 86_400)
       ),
@@ -182,7 +194,11 @@ struct GTDMirrorStoreTests {
           nativeCalendarItemIdentifier: "native-parent",
           nativeExternalIdentifier: nil,
           title: "Launch billing cleanup",
-          notes: nil,
+          rawNotes: managedNotes(body: "Parent", canonicalManagedID: parentManagedID),
+          notes: "Parent",
+          notesBody: "Parent",
+          canonicalManagedID: parentManagedID,
+          footerState: .valid,
           listTitle: "Work",
           isCompleted: false,
           priority: .medium,
@@ -200,7 +216,11 @@ struct GTDMirrorStoreTests {
           nativeCalendarItemIdentifier: "native-child",
           nativeExternalIdentifier: nil,
           title: "Call vendor",
-          notes: nil,
+          rawNotes: managedNotes(body: "Child", canonicalManagedID: childManagedID),
+          notes: "Child",
+          notesBody: "Child",
+          canonicalManagedID: childManagedID,
+          footerState: .valid,
           listTitle: "Work",
           isCompleted: false,
           priority: .medium,
@@ -265,7 +285,7 @@ struct GTDMirrorStoreTests {
 
     let result = try await store.queryOldIncompleteEmptyNotes(olderThanDays: 7, now: now)
     #expect(result.items.count == 2)
-    #expect(result.items.allSatisfy { $0.identityStatus == .collisionUnresolved })
+    #expect(result.items.allSatisfy { $0.identityStatus == .canonicalManaged })
     #expect(Set(result.items.compactMap(\.canonicalID)).count == 2)
   }
 
@@ -338,5 +358,9 @@ struct GTDMirrorStoreTests {
       "remindctl-gtd-tests-\(UUID().uuidString).sqlite3",
       isDirectory: false
     )
+  }
+
+  private func managedNotes(body: String?, canonicalManagedID: String) -> String {
+    CanonicalNoteFooter.render(notesBody: body, canonicalManagedID: canonicalManagedID)
   }
 }

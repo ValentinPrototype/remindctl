@@ -1,26 +1,26 @@
 import Foundation
 
 public struct CanonicalizationPolicy: Sendable, Equatable {
-  public let externallyValidatedSourceScopes: Set<String>
-
-  public init(externallyValidatedSourceScopes: Set<String> = []) {
-    self.externallyValidatedSourceScopes = externallyValidatedSourceScopes
-  }
+  public init() {}
 
   public func canonicalIdentity(for reminder: NativeReminderRecord) -> CanonicalIdentity {
-    if externallyValidatedSourceScopes.contains(reminder.sourceScopeID),
-      let externalID = reminder.nativeExternalIdentifier,
-      !externalID.isEmpty
-    {
+    if let canonicalManagedID = reminder.canonicalManagedID {
       return CanonicalIdentity(
-        canonicalID: "external::\(reminder.sourceScopeID)::\(externalID)",
-        identityStatus: .canonicalExternal
+        canonicalID: "managed::\(canonicalManagedID)",
+        identityStatus: .canonicalManaged
+      )
+    }
+
+    if reminder.footerState == .invalid {
+      return CanonicalIdentity(
+        canonicalID: "footer-invalid::\(reminder.sourceScopeID)::\(reminder.nativeCalendarItemIdentifier)",
+        identityStatus: .footerInvalid
       )
     }
 
     return CanonicalIdentity(
-      canonicalID: "local::\(reminder.sourceScopeID)::\(reminder.nativeCalendarItemIdentifier)",
-      identityStatus: .localOnlyUnstable
+      canonicalID: "footer-missing::\(reminder.sourceScopeID)::\(reminder.nativeCalendarItemIdentifier)",
+      identityStatus: .footerInvalid
     )
   }
 }

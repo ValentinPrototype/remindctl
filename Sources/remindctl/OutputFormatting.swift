@@ -20,13 +20,40 @@ struct AuthorizationSummary: Codable, Sendable, Equatable {
   let authorized: Bool
 }
 
+protocol ReminderDisplayItem: ReminderFilteringItem {
+  var displayID: String { get }
+  var listName: String { get }
+  var priority: ReminderPriority { get }
+}
+
+extension ReminderItem: ReminderDisplayItem {
+  var displayID: String { id }
+}
+
+extension ShortcutTagReminder: ReminderDisplayItem {
+  var displayID: String { "" }
+}
+
 enum OutputRenderer {
   static func printReminders(_ reminders: [ReminderItem], format: OutputFormat) {
     switch format {
     case .standard:
-      printRemindersStandard(reminders)
+      printLines(renderRemindersStandard(reminders))
     case .plain:
-      printRemindersPlain(reminders)
+      printLines(renderRemindersPlain(reminders))
+    case .json:
+      printJSON(reminders)
+    case .quiet:
+      Swift.print(reminders.count)
+    }
+  }
+
+  static func printShortcutTagReminders(_ reminders: [ShortcutTagReminder], format: OutputFormat) {
+    switch format {
+    case .standard:
+      printLines(renderRemindersStandard(reminders))
+    case .plain:
+      printLines(renderRemindersPlain(reminders))
     case .json:
       printJSON(reminders)
     case .quiet:
@@ -197,31 +224,42 @@ enum OutputRenderer {
     }
   }
 
-  private static func printRemindersStandard(_ reminders: [ReminderItem]) {
+  static func renderShortcutTagRemindersPlain(_ reminders: [ShortcutTagReminder]) -> [String] {
+    renderRemindersPlain(reminders)
+  }
+
+  static func renderReminderItemsStandard(_ reminders: [ReminderItem]) -> [String] {
+    renderRemindersStandard(reminders)
+  }
+
+  static func renderReminderItemsPlain(_ reminders: [ReminderItem]) -> [String] {
+    renderRemindersPlain(reminders)
+  }
+
+  private static func renderRemindersStandard<T: ReminderDisplayItem>(_ reminders: [T]) -> [String] {
     let sorted = ReminderFiltering.sort(reminders)
     guard !sorted.isEmpty else {
-      Swift.print("No reminders found")
-      return
+      return ["No reminders found"]
     }
-    for (index, reminder) in sorted.enumerated() {
+    return sorted.enumerated().map { index, reminder in
       let status = reminder.isCompleted ? "x" : " "
       let due = reminder.dueDate.map { DateParsing.formatDisplay($0) } ?? "no due date"
       let priority = reminder.priority == .none ? "" : " priority=\(reminder.priority.rawValue)"
-      Swift.print("[\(index + 1)] [\(status)] \(reminder.title) [\(reminder.listName)] — \(due)\(priority)")
+      return "[\(index + 1)] [\(status)] \(reminder.title) [\(reminder.listName)] — \(due)\(priority)"
     }
   }
 
-  private static func printRemindersPlain(_ reminders: [ReminderItem]) {
+  private static func renderRemindersPlain<T: ReminderDisplayItem>(_ reminders: [T]) -> [String] {
     let sorted = ReminderFiltering.sort(reminders)
-    for reminder in sorted {
-      Swift.print(plainLine(for: reminder))
+    return sorted.map { reminder in
+      plainLine(for: reminder)
     }
   }
 
-  private static func plainLine(for reminder: ReminderItem) -> String {
+  private static func plainLine<T: ReminderDisplayItem>(for reminder: T) -> String {
     let due = reminder.dueDate.map { isoFormatter().string(from: $0) } ?? ""
     return [
-      reminder.id,
+      reminder.displayID,
       reminder.listName,
       reminder.isCompleted ? "1" : "0",
       reminder.priority.rawValue,
@@ -244,6 +282,12 @@ enum OutputRenderer {
   private static func printListsPlain(_ summaries: [ListSummary]) {
     for summary in summaries.sorted(by: { $0.title < $1.title }) {
       Swift.print("\(summary.title)\t\(summary.reminderCount)\t\(summary.overdueCount)")
+    }
+  }
+
+  private static func printLines(_ lines: [String]) {
+    for line in lines {
+      Swift.print(line)
     }
   }
 

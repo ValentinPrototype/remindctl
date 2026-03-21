@@ -77,7 +77,7 @@ struct ShortcutTagSearchTests {
           {
             "id": "Build Main Agent",
             "title": "Build Main Agent",
-            "notes": "ship it",
+            "notes": "ship it\\n\\n[remindctl-gtd:v1 id=550e8400-e29b-41d4-a716-446655440000]",
             "isCompleted": false,
             "completedAt": "",
             "priority": "High",
@@ -105,6 +105,7 @@ struct ShortcutTagSearchTests {
     #expect(payload.request == "active-project")
     #expect(payload.data.count == 1)
     #expect(payload.data[0].id == "Build Main Agent")
+    #expect(payload.data[0].notes == "ship it")
     #expect(payload.data[0].priority == .high)
     #expect(payload.data[0].tags == ["active-project", "openclaw"])
     #expect(payload.data[0].subTasks == ["Define next action", "Ship it"])

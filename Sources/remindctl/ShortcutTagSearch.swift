@@ -79,7 +79,7 @@ struct ShortcutTagReminder: Codable, Sendable, Equatable, ReminderFilteringItem 
   ) {
     self.id = id
     self.title = title
-    self.notes = notes
+    self.notes = CanonicalNoteFooter.parse(rawNotes: notes).notesBody
     self.isCompleted = isCompleted
     self.completedAt = completedAt
     self.priority = priority
@@ -103,7 +103,9 @@ struct ShortcutTagReminder: Codable, Sendable, Equatable, ReminderFilteringItem 
 
     id = try Self.decodeOptionalString(from: container, key: .id)
     title = try container.decode(String.self, forKey: .title)
-    notes = try Self.decodeOptionalString(from: container, key: .notes)
+    notes = CanonicalNoteFooter.parse(
+      rawNotes: try Self.decodeOptionalString(from: container, key: .notes)
+    ).notesBody
     isCompleted = try container.decode(Bool.self, forKey: .isCompleted)
     completedAt = try Self.decodeOptionalDate(from: container, key: .completedAt)
     priority = try Self.decodePriority(from: container, key: .priority)

@@ -115,6 +115,115 @@ enum OutputRenderer {
     }
   }
 
+  static func printMirrorSyncSummary(_ summary: MirrorSyncSummary, format: OutputFormat) {
+    switch format {
+    case .standard:
+      Swift.print("Mirror updated: \(summary.databasePath)")
+      Swift.print("Native reminders: \(summary.nativeReminderCount)")
+      Swift.print("Canonical reminders: \(summary.canonicalReminderCount)")
+      Swift.print("Unresolved Shortcut items: \(summary.unresolvedShortcutCount)")
+      Swift.print("Contract runs: \(summary.contractRunCount)")
+      Swift.print("Completed at: \(DateParsing.formatDisplay(summary.completedAt))")
+    case .plain:
+      Swift.print(
+        [
+          summary.databasePath,
+          "\(summary.nativeReminderCount)",
+          "\(summary.canonicalReminderCount)",
+          "\(summary.unresolvedShortcutCount)",
+          "\(summary.contractRunCount)",
+          isoFormatter().string(from: summary.completedAt),
+        ].joined(separator: "\t")
+      )
+    case .json:
+      printJSON(summary)
+    case .quiet:
+      Swift.print(summary.canonicalReminderCount)
+    }
+  }
+
+  static func printGTDQueryResult(_ result: GTDQueryResult, format: OutputFormat) {
+    switch format {
+    case .standard:
+      Swift.print("\(result.queryFamily) [\(result.status.rawValue)] confidence=\(result.confidence.rawValue)")
+      if result.identityStatuses.isEmpty == false {
+        Swift.print("Identity status: \(result.identityStatuses.map(\.rawValue).joined(separator: ", "))")
+      }
+      if let nativeSyncedAt = result.freshness.nativeSyncedAt {
+        Swift.print("Native sync: \(DateParsing.formatDisplay(nativeSyncedAt))")
+      }
+      if let shortcutGeneratedAt = result.freshness.shortcutGeneratedAt {
+        Swift.print("Shortcut data: \(DateParsing.formatDisplay(shortcutGeneratedAt))")
+      }
+      for warning in result.warnings {
+        Swift.print("Warning: \(warning)")
+      }
+      if result.items.isEmpty {
+        Swift.print("No results found")
+        return
+      }
+      for item in result.items {
+        let due = item.dueAt.map { DateParsing.formatDisplay($0) } ?? "no due date"
+        let semantics = item.matchedSemantics.isEmpty ? "" : " semantics=\(item.matchedSemantics.joined(separator: ","))"
+        let hierarchySuffix: String
+        if item.parentSourceItemID != nil || item.childSourceItemIDs.isEmpty == false {
+          let parent = item.parentCanonicalID ?? item.parentSourceItemID ?? "-"
+          hierarchySuffix = " parent=\(parent) children=\(item.childSourceItemIDs.count)"
+        } else {
+          hierarchySuffix = ""
+        }
+        Swift.print("[\(item.identityStatus.rawValue)] \(item.title) [\(item.listTitle)] — \(due)\(semantics)\(hierarchySuffix)")
+      }
+    case .plain:
+      for item in result.items {
+        Swift.print(
+          [
+            item.sourceItemID ?? "",
+            item.canonicalID ?? "",
+            item.identityStatus.rawValue,
+            item.listTitle,
+            item.priority.rawValue,
+            item.dueAt.map { isoFormatter().string(from: $0) } ?? "",
+            item.title,
+            item.matchedSemantics.joined(separator: ","),
+            item.parentCanonicalID ?? item.parentSourceItemID ?? "",
+            item.childCanonicalIDs.isEmpty ? item.childSourceItemIDs.joined(separator: ",") : item.childCanonicalIDs.joined(separator: ","),
+          ].joined(separator: "\t")
+        )
+      }
+    case .json:
+      printJSON(result)
+    case .quiet:
+      Swift.print(result.items.count)
+    }
+  }
+
+  static func printValidationGates(_ records: [ValidationGateRecord], format: OutputFormat) {
+    switch format {
+    case .standard:
+      for record in records.sorted(by: { $0.gateID.rawValue < $1.gateID.rawValue }) {
+        let evidence = record.evidence.map { " — \($0)" } ?? ""
+        let updatedAt = record.updatedAt == .distantPast ? "never" : DateParsing.formatDisplay(record.updatedAt)
+        Swift.print("\(record.gateID.rawValue) [\(record.state.rawValue)] \(record.gateID.title) — \(updatedAt)\(evidence)")
+      }
+    case .plain:
+      for record in records.sorted(by: { $0.gateID.rawValue < $1.gateID.rawValue }) {
+        Swift.print(
+          [
+            record.gateID.rawValue,
+            record.state.rawValue,
+            record.updatedAt == .distantPast ? "" : isoFormatter().string(from: record.updatedAt),
+            record.evidence ?? "",
+          ].joined(separator: "\t")
+        )
+      }
+    case .json:
+      printJSON(records)
+    case .quiet:
+      Swift.print(records.count)
+    }
+  }
+
   static func renderShortcutTagRemindersPlain(_ reminders: [ShortcutTagReminder]) -> [String] {
     renderRemindersPlain(reminders)
   }

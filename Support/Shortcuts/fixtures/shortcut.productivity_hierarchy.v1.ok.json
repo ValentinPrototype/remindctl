@@ -1,0 +1,52 @@
+{
+  "contract_id": "shortcut.productivity_hierarchy.v1",
+  "contract_version": "v1",
+  "generated_at": "2026-03-20T12:00:00Z",
+  "status": "ok",
+  "items": [
+    {
+      "source_item_id": "hierarchy-parent-001",
+      "native_calendar_item_identifier": null,
+      "native_external_identifier": null,
+      "title": "Launch billing cleanup",
+      "notes": "Project root\n\n[remindctl-gtd:v1 id=33333333-3333-4333-8333-333333333333]",
+      "list_title": "ActiveGoals",
+      "is_completed": false,
+      "priority": "medium",
+      "due_at": null,
+      "created_at": "2026-03-02T08:41:24Z",
+      "updated_at": "2026-03-20T20:17:45Z",
+      "url": null,
+      "matched_semantics": [],
+      "observed_tags": [
+        "active-project"
+      ],
+      "parent_source_item_id": null,
+      "child_source_item_ids": [
+        "hierarchy-child-001"
+      ]
+    },
+    {
+      "source_item_id": "hierarchy-child-001",
+      "native_calendar_item_identifier": null,
+      "native_external_identifier": null,
+      "title": "Reply to finance",
+      "notes": "Concrete step\n\n[remindctl-gtd:v1 id=44444444-4444-4444-8444-444444444444]",
+      "list_title": "ActiveGoals",
+      "is_completed": false,
+      "priority": "high",
+      "due_at": "2026-03-21T09:00:00Z",
+      "created_at": "2026-03-10T10:00:00Z",
+      "updated_at": "2026-03-19T14:00:00Z",
+      "url": null,
+      "matched_semantics": [],
+      "observed_tags": [
+        "next-action"
+      ],
+      "parent_source_item_id": "hierarchy-parent-001",
+      "child_source_item_ids": []
+    }
+  ],
+  "warnings": [],
+  "errors": []
+}

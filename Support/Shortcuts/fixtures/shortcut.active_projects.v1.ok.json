@@ -1,0 +1,31 @@
+{
+  "contract_id": "shortcut.active_projects.v1",
+  "contract_version": "v1",
+  "generated_at": "2026-03-20T12:00:00Z",
+  "status": "ok",
+  "items": [
+    {
+      "source_item_id": "active-project-001",
+      "native_calendar_item_identifier": null,
+      "native_external_identifier": null,
+      "title": "Launch billing cleanup",
+      "notes": "Launch billing cleanup\n\n[remindctl-gtd:v1 id=550e8400-e29b-41d4-a716-446655440000]",
+      "list_title": "ActiveGoals",
+      "is_completed": false,
+      "priority": "medium",
+      "due_at": null,
+      "created_at": "2026-03-02T08:41:24Z",
+      "updated_at": "2026-03-20T20:17:45Z",
+      "url": "https://example.com/project",
+      "matched_semantics": [
+        "active-project"
+      ],
+      "observed_tags": [
+        "active-project",
+        "area-work"
+      ]
+    }
+  ],
+  "warnings": [],
+  "errors": []
+}

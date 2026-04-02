@@ -1,0 +1,26 @@
+{
+  "contract_id": "shortcut.productivity_recently_updated.v1",
+  "contract_version": "v1",
+  "generated_at": "2026-03-20T12:00:00Z",
+  "status": "ok",
+  "items": [
+    {
+      "source_item_id": "recently-updated-001",
+      "native_calendar_item_identifier": null,
+      "native_external_identifier": null,
+      "title": "Review agenda",
+      "notes": "Waiting for last-minute changes\n\n[remindctl-gtd:v1 id=55555555-5555-4555-8555-555555555555]",
+      "list_title": "ActiveGoals",
+      "is_completed": false,
+      "priority": "none",
+      "due_at": null,
+      "created_at": "2026-03-01T10:00:00Z",
+      "updated_at": "2026-03-20T19:30:00Z",
+      "url": null,
+      "matched_semantics": [],
+      "observed_tags": null
+    }
+  ],
+  "warnings": [],
+  "errors": []
+}

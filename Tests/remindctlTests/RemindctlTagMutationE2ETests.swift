@@ -29,13 +29,15 @@ struct RemindctlTagMutationE2ETests {
       #expect(editResult.exitCode == 0)
 
       let matches = try await showTag(tag)
-      let matchedReminder = try #require(matches.first(where: { $0.title == fixture.title }))
-      #expect(matchedReminder.tags.contains(tag))
+      let matchingReminders = matches.filter { $0.title == fixture.title }
+      let matchedReminder = try #require(matchingReminders.first)
+      #expect(matchingReminders.count == 1)
+      #expect(matchedReminder.tags == [tag])
     }
   }
 
-  @Test("Setting a tag when another tag already exists keeps both discoverable")
-  func settingTagWhenAnotherExists() async throws {
+  @Test("Setting a tag when another tag already exists replaces the previous tag set")
+  func settingTagWhenAnotherExistsReplacesPreviousTags() async throws {
     guard Self.shouldRunReminderE2ETests else { return }
 
     let originalTag = uniqueTag(prefix: "codex-e2e-original")
@@ -59,18 +61,19 @@ struct RemindctlTagMutationE2ETests {
       #expect(editResult.exitCode == 0)
 
       let additionalMatches = try await showTag(additionalTag)
-      let additionalReminder = try #require(additionalMatches.first(where: { $0.title == fixture.title }))
-      #expect(additionalReminder.tags.contains(originalTag))
-      #expect(additionalReminder.tags.contains(additionalTag))
+      let additionalMatchingReminders = additionalMatches.filter { $0.title == fixture.title }
+      let additionalReminder = try #require(additionalMatchingReminders.first)
+      #expect(additionalMatchingReminders.count == 1)
+      #expect(additionalReminder.tags == [additionalTag])
+      #expect(additionalReminder.tags.filter { $0 == additionalTag }.count == 1)
 
       let originalMatches = try await showTag(originalTag)
-      let originalReminder = try #require(originalMatches.first(where: { $0.title == fixture.title }))
-      #expect(originalReminder.tags.contains(originalTag))
-      #expect(originalReminder.tags.contains(additionalTag))
+      let originalMatchingReminders = originalMatches.filter { $0.title == fixture.title }
+      #expect(originalMatchingReminders.isEmpty)
     }
   }
 
-  @Test("Setting the same tag repeatedly stays idempotent")
+  @Test("Running the same set-tag edit repeatedly stays idempotent")
   func settingSameTagRepeatedly() async throws {
     guard Self.shouldRunReminderE2ETests else { return }
 
@@ -83,23 +86,23 @@ struct RemindctlTagMutationE2ETests {
     ) { fixtures in
       let fixture = try #require(fixtures.first)
 
-      let editResult = try await ShortcutLiveTestSupport.runRemindctl([
-        "edit",
-        fixture.reminder.id,
-        "--set-tag",
-        tag,
-        "--set-tag",
-        tag,
-        "--set-tag",
-        tag,
-        "--json",
-        "--no-input",
-      ])
-      #expect(editResult.exitCode == 0)
+      for _ in 0..<3 {
+        let editResult = try await ShortcutLiveTestSupport.runRemindctl([
+          "edit",
+          fixture.reminder.id,
+          "--set-tag",
+          tag,
+          "--json",
+          "--no-input",
+        ])
+        #expect(editResult.exitCode == 0)
+      }
 
       let matches = try await showTag(tag)
-      let matchedReminder = try #require(matches.first(where: { $0.title == fixture.title }))
-      #expect(matchedReminder.tags.filter { $0 == tag }.count == 1)
+      let matchingReminders = matches.filter { $0.title == fixture.title }
+      let matchedReminder = try #require(matchingReminders.first)
+      #expect(matchingReminders.count == 1)
+      #expect(matchedReminder.tags == [tag])
     }
   }
 
@@ -117,7 +120,7 @@ struct RemindctlTagMutationE2ETests {
       let fixture = try #require(fixtures.first)
 
       let matchesBeforeClear = try await showTag(tag)
-      #expect(matchesBeforeClear.contains(where: { $0.title == fixture.title }))
+      #expect(matchesBeforeClear.filter { $0.title == fixture.title }.count == 1)
 
       let clearResult = try await ShortcutLiveTestSupport.runRemindctl([
         "edit",

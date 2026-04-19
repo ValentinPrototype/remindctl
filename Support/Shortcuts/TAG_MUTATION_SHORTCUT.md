@@ -33,7 +33,7 @@ Allowed `operation` values:
 
 Rules:
 
-- `set` is additive: ensure the requested tags are present without removing existing tags
+- `set` replaces the full tag set with the requested tags
 - `tags` is required for `set`, `add`, and `remove`
 - `tags` is omitted for `clear`
 - the Shortcut must resolve the reminder from the `[remindctl-gtd:v1 id=...]` footer in notes

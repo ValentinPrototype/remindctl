@@ -40,10 +40,14 @@ struct ShortcutTagSearchLiveTests {
     ) { fixtures in
       let fixture = try #require(fixtures.first)
       let payload = try ShortcutLiveTestSupport.runSearchShortcut(tags: [uniqueTag])
+      let matchingReminders = payload.data.filter { $0.title == fixture.title }
+      let matchedReminder = try #require(matchingReminders.first)
 
       #expect(payload.success)
       #expect(payload.count == payload.data.count)
-      #expect(payload.data.contains(where: { $0.title == fixture.title && $0.tags.contains(uniqueTag) }))
+      #expect(matchingReminders.count == 1)
+      #expect(payload.data.count == 1)
+      #expect(matchedReminder.tags.filter { $0 == uniqueTag }.count == 1)
     }
   }
 
@@ -70,6 +74,7 @@ struct ShortcutTagSearchLiveTests {
 
       #expect(payload.success)
       #expect(payload.count == payload.data.count)
+      #expect(payload.data.count == 1)
       #expect(titles.contains(bothFixture.title))
       #expect(titles.contains(firstOnlyFixture.title) == false)
       #expect(titles.contains(secondOnlyFixture.title) == false)

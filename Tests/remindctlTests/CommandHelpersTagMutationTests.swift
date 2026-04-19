@@ -56,6 +56,18 @@ struct CommandHelpersTagMutationTests {
     )
   }
 
+  @Test("Set-tag operation deduplicates repeated values within a single command")
+  func setTagOperationDeduplicatesRepeatedValues() throws {
+    let operations = try CommandHelpers.parseEditTagOperations(
+      setTags: ["#Active-Project", "active-project", "ACTIVE-PROJECT"],
+      addTags: [],
+      removeTags: [],
+      clearTags: false
+    )
+
+    #expect(operations == [.set(["active-project"])])
+  }
+
   @Test("Incremental edit tag operations reject conflicting add and remove tags")
   func incrementalTagOperationsRejectConflicts() {
     #expect(throws: Error.self) {

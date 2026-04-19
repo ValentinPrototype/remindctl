@@ -61,7 +61,7 @@ Command usage:
 
 ```bash
 remindctl add "Ship v1" --tag active-project --tag area-work
-remindctl edit 2 --set-tag active-project --set-tag area-work   # additive; keeps existing tags
+remindctl edit 2 --set-tag active-project --set-tag area-work
 remindctl edit 2 --add-tag waiting-on --remove-tag next-action
 remindctl edit 2 --clear-tags
 ```

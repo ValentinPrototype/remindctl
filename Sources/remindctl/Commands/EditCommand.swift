@@ -18,7 +18,7 @@ enum EditCommand {
             .make(label: "list", names: [.short("l"), .long("list")], help: "Move to list", parsing: .singleValue),
             .make(label: "due", names: [.short("d"), .long("due")], help: "Set due date", parsing: .singleValue),
             .make(label: "notes", names: [.short("n"), .long("notes")], help: "Set notes", parsing: .singleValue),
-            .make(label: "setTag", names: [.long("set-tag")], help: "Ensure tag(s) are present without removing existing ones (repeatable)", parsing: .singleValue),
+            .make(label: "setTag", names: [.long("set-tag")], help: "Replace the full tag set (repeatable)", parsing: .singleValue),
             .make(label: "addTag", names: [.long("add-tag")], help: "Add tag(s) incrementally (repeatable)", parsing: .singleValue),
             .make(label: "removeTag", names: [.long("remove-tag")], help: "Remove tag(s) incrementally (repeatable)", parsing: .singleValue),
             .make(

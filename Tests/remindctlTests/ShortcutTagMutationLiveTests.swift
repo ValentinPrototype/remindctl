@@ -93,13 +93,117 @@ struct ShortcutTagMutationLiveTests {
         operation: .set([firstTag, secondTag])
       )
       let response = try ShortcutLiveTestSupport.runMutationShortcut(request: request)
+      let appliedTags = try #require(response.appliedTags)
 
       #expect(response.success)
       #expect(response.operation == .set)
       #expect(response.managedID == fixture.managedID)
       #expect(response.resolvedReminderCount == 1)
-      #expect(response.appliedTags?.contains(firstTag) == true)
-      #expect(response.appliedTags?.contains(secondTag) == true)
+      #expect(appliedTags.count == 2)
+      #expect(Set(appliedTags) == Set([firstTag, secondTag]))
+    }
+  }
+
+  @Test("Installed mutate shortcut add operation keeps existing tags and appends new tags")
+  func addOperationReturnsExpectedTagSet() async throws {
+    guard Self.shouldRunLiveTests else { return }
+
+    let originalTag = uniqueTag(prefix: "codex-live-add-original")
+    let addedTag = uniqueTag(prefix: "codex-live-add-added")
+
+    try await ShortcutLiveTestSupport.withManagedReminders(
+      seeds: [
+        ManagedReminderSeed(titlePrefix: "Codex Live Mutate Add", tags: [originalTag])
+      ]
+    ) { fixtures in
+      let fixture = try #require(fixtures.first)
+      let response = try ShortcutLiveTestSupport.runMutationShortcut(
+        request: ShortcutTagMutationRequest(
+          targetManagedID: fixture.managedID,
+          operation: .add([addedTag])
+        )
+      )
+      let appliedTags = try #require(response.appliedTags)
+
+      #expect(response.success)
+      #expect(response.operation == .add)
+      #expect(response.managedID == fixture.managedID)
+      #expect(response.resolvedReminderCount == 1)
+      #expect(appliedTags.count == 2)
+      #expect(Set(appliedTags) == Set([originalTag, addedTag]))
+
+      let addedTagSearch = try ShortcutLiveTestSupport.runSearchShortcut(tags: [addedTag])
+      #expect(addedTagSearch.data.contains(where: { $0.title == fixture.title }))
+    }
+  }
+
+  @Test("Installed mutate shortcut remove operation removes only the requested tags")
+  func removeOperationReturnsExpectedTagSet() async throws {
+    guard Self.shouldRunLiveTests else { return }
+
+    let keptTag = uniqueTag(prefix: "codex-live-remove-keep")
+    let removedTag = uniqueTag(prefix: "codex-live-remove-drop")
+
+    try await ShortcutLiveTestSupport.withManagedReminders(
+      seeds: [
+        ManagedReminderSeed(titlePrefix: "Codex Live Mutate Remove", tags: [keptTag, removedTag])
+      ]
+    ) { fixtures in
+      let fixture = try #require(fixtures.first)
+      let response = try ShortcutLiveTestSupport.runMutationShortcut(
+        request: ShortcutTagMutationRequest(
+          targetManagedID: fixture.managedID,
+          operation: .remove([removedTag])
+        )
+      )
+      let appliedTags = try #require(response.appliedTags)
+
+      #expect(response.success)
+      #expect(response.operation == .remove)
+      #expect(response.managedID == fixture.managedID)
+      #expect(response.resolvedReminderCount == 1)
+      #expect(appliedTags.count == 1)
+      #expect(appliedTags == [keptTag])
+
+      let removedTagSearch = try ShortcutLiveTestSupport.runSearchShortcut(tags: [removedTag])
+      #expect(removedTagSearch.data.contains(where: { $0.title == fixture.title }) == false)
+
+      let keptTagSearch = try ShortcutLiveTestSupport.runSearchShortcut(tags: [keptTag])
+      #expect(keptTagSearch.data.contains(where: { $0.title == fixture.title }))
+    }
+  }
+
+  @Test("Installed mutate shortcut clear operation removes all tags")
+  func clearOperationRemovesAllTags() async throws {
+    guard Self.shouldRunLiveTests else { return }
+
+    let firstTag = uniqueTag(prefix: "codex-live-clear-a")
+    let secondTag = uniqueTag(prefix: "codex-live-clear-b")
+
+    try await ShortcutLiveTestSupport.withManagedReminders(
+      seeds: [
+        ManagedReminderSeed(titlePrefix: "Codex Live Mutate Clear", tags: [firstTag, secondTag])
+      ]
+    ) { fixtures in
+      let fixture = try #require(fixtures.first)
+      let response = try ShortcutLiveTestSupport.runMutationShortcut(
+        request: ShortcutTagMutationRequest(
+          targetManagedID: fixture.managedID,
+          operation: .clear
+        )
+      )
+
+      #expect(response.success)
+      #expect(response.operation == .clear)
+      #expect(response.managedID == fixture.managedID)
+      #expect(response.resolvedReminderCount == 1)
+      #expect((response.appliedTags ?? []).isEmpty)
+
+      let firstTagSearch = try ShortcutLiveTestSupport.runSearchShortcut(tags: [firstTag])
+      #expect(firstTagSearch.data.contains(where: { $0.title == fixture.title }) == false)
+
+      let secondTagSearch = try ShortcutLiveTestSupport.runSearchShortcut(tags: [secondTag])
+      #expect(secondTagSearch.data.contains(where: { $0.title == fixture.title }) == false)
     }
   }
 

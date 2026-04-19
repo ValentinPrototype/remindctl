@@ -160,6 +160,25 @@ public actor RemindersStore {
     return item(from: reminder)
   }
 
+  public func mutationTarget(forReminderID id: String) throws -> ReminderMutationTarget {
+    let reminder = try reminder(withID: id)
+    let normalizedNotes = CanonicalNoteFooter.normalize(rawNotes: reminder.notes)
+
+    if normalizedNotes.rawNotes != reminder.notes {
+      reminder.notes = normalizedNotes.rawNotes
+      try eventStore.save(reminder, commit: true)
+    }
+
+    guard let canonicalManagedID = normalizedNotes.canonicalManagedID else {
+      throw RemindCoreError.operationFailed("Unable to determine reminder managed ID")
+    }
+
+    return ReminderMutationTarget(
+      reminderID: reminder.calendarItemIdentifier,
+      canonicalManagedID: canonicalManagedID
+    )
+  }
+
   public func completeReminders(ids: [String]) async throws -> [ReminderItem] {
     var updated: [ReminderItem] = []
     for id in ids {

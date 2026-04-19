@@ -261,27 +261,6 @@ struct ShortcutSearchQueryV1: Encodable, Sendable, Equatable {
   }
 }
 
-private struct ShortcutRunFiles {
-  let directoryURL: URL
-  let outputURL: URL
-}
-
-private enum ShortcutRunFilesFactory {
-  static func make(in fileManager: FileManager = .default) throws -> ShortcutRunFiles {
-    let currentDirectoryURL = URL(fileURLWithPath: fileManager.currentDirectoryPath, isDirectory: true)
-    let baseDirectoryURL = currentDirectoryURL.appendingPathComponent(".remindctl-shortcuts", isDirectory: true)
-    try fileManager.createDirectory(at: baseDirectoryURL, withIntermediateDirectories: true)
-
-    let runDirectoryURL = baseDirectoryURL.appendingPathComponent(UUID().uuidString, isDirectory: true)
-    try fileManager.createDirectory(at: runDirectoryURL, withIntermediateDirectories: true)
-
-    return ShortcutRunFiles(
-      directoryURL: runDirectoryURL,
-      outputURL: runDirectoryURL.appendingPathComponent("output.txt")
-    )
-  }
-}
-
 enum ShortcutTagSearch {
   static let shortcutName = "remindctl - Search Reminders By Tag with JSON Output"
 

@@ -8,8 +8,11 @@ Use this directory for two different kinds of Shortcut artifacts:
 - shipped transport/reference Shortcuts that `remindctl` can run today
 - fixed, versioned GTD acquisition contracts implemented by the Shortcut team in parallel
 
-The current shipped helper is:
+The current shipped/read helpers are:
 - `remindctl - Search Reminders By Tag with JSON Output.shortcut`
+
+The tag mutation helper contract is documented in:
+- [TAG_MUTATION_SHORTCUT.md](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/TAG_MUTATION_SHORTCUT.md)
 
 The GTD contract catalog is documented in:
 - [REQUIRED_SHORTCUTS.md](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/REQUIRED_SHORTCUTS.md)
@@ -20,6 +23,7 @@ Fixture payloads live in:
 ## Ownership Boundary
 
 - Native/EventKit team owns reminder mutation, footer normalization, and native evidence capture.
+- Shortcut integration may be used for true tag mutation when EventKit cannot express the operation directly.
 - Shortcut team owns read-only Shortcut implementations that satisfy the documented contract IDs.
 - Mirror/query team owns footer parsing, canonicalization, unresolved-row handling, and query confidence.
 
@@ -54,3 +58,11 @@ Fixture names use the contract ID as the base filename, for example:
 
 The helper Shortcut is copied here as the canonical repo location.
 A compatibility copy may still exist elsewhere in the repository while documentation transitions.
+
+## Testing Note
+
+Repo tests that exercise installed Shortcuts are opt-in. Use:
+- `REMINDCTL_RUN_LIVE_SHORTCUT_TESTS=1 swift test`
+- `REMINDCTL_RUN_LIVE_SHORTCUT_TESTS=1 REMINDCTL_RUN_REMINDER_E2E_TESTS=1 swift test`
+
+Default `swift test` validates repo-side adapters and assets, but does not invoke the installed Shortcuts app helpers.

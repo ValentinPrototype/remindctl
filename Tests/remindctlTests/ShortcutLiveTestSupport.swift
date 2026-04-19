@@ -1,0 +1,224 @@
+import Darwin
+import Foundation
+import Testing
+
+@testable import RemindCore
+@testable import remindctl
+
+struct ManagedReminderFixture {
+  let reminder: ReminderItem
+  let managedID: String
+  let title: String
+}
+
+struct ManagedReminderSeed {
+  let titlePrefix: String
+  let tags: [String]
+}
+
+struct CapturedCommandResult {
+  let exitCode: Int32
+  let stdout: String
+  let stderr: String
+}
+
+enum ShortcutLiveTestSupport {
+  static func withManagedReminders(
+    seeds: [ManagedReminderSeed],
+    body: ([ManagedReminderFixture]) async throws -> Void
+  ) async throws {
+    let store = RemindersStore()
+    try await store.requestAccess()
+
+    let targetList = try #require(await store.defaultListName())
+    var createdReminders: [ReminderItem] = []
+    var createdFixtures: [ManagedReminderFixture] = []
+
+    do {
+      for (index, seed) in seeds.enumerated() {
+        let managedID = UUID().uuidString.lowercased()
+        let title = "\(seed.titlePrefix) \(UUID().uuidString)"
+        let notes = """
+        Reminder created by remindctl live test \(index)
+
+        [remindctl-gtd:v1 id=\(managedID)]
+        """
+        let reminder = try await store.createReminder(
+          ReminderDraft(title: title, notes: notes, dueDate: nil, priority: .none),
+          listName: targetList
+        )
+        createdReminders.append(reminder)
+        createdFixtures.append(
+          ManagedReminderFixture(reminder: reminder, managedID: managedID, title: title)
+        )
+      }
+
+      for (fixture, seed) in zip(createdFixtures, seeds) where seed.tags.isEmpty == false {
+        _ = try runMutationShortcut(
+          request: ShortcutTagMutationRequest(
+            targetManagedID: fixture.managedID,
+            operation: .set(seed.tags)
+          )
+        )
+      }
+
+      try await body(createdFixtures)
+    } catch {
+      if createdReminders.isEmpty == false {
+        _ = try? await store.deleteReminders(ids: createdReminders.map(\.id))
+      }
+      throw error
+    }
+
+    if createdReminders.isEmpty == false {
+      _ = try? await store.deleteReminders(ids: createdReminders.map(\.id))
+    }
+  }
+
+  static func withDuplicateManagedReminders(
+    reminderCount: Int,
+    titlePrefix: String,
+    body: ([ManagedReminderFixture]) async throws -> Void
+  ) async throws {
+    let store = RemindersStore()
+    try await store.requestAccess()
+
+    let targetList = try #require(await store.defaultListName())
+    let managedID = UUID().uuidString.lowercased()
+    var createdReminders: [ReminderItem] = []
+    var fixtures: [ManagedReminderFixture] = []
+
+    do {
+      for index in 0..<reminderCount {
+        let title = "\(titlePrefix) \(UUID().uuidString)"
+        let notes = """
+        Reminder created by remindctl live duplicate test \(index)
+
+        [remindctl-gtd:v1 id=\(managedID)]
+        """
+        let reminder = try await store.createReminder(
+          ReminderDraft(title: title, notes: notes, dueDate: nil, priority: .none),
+          listName: targetList
+        )
+        createdReminders.append(reminder)
+        fixtures.append(ManagedReminderFixture(reminder: reminder, managedID: managedID, title: title))
+      }
+
+      try await body(fixtures)
+    } catch {
+      if createdReminders.isEmpty == false {
+        _ = try? await store.deleteReminders(ids: createdReminders.map(\.id))
+      }
+      throw error
+    }
+
+    if createdReminders.isEmpty == false {
+      _ = try? await store.deleteReminders(ids: createdReminders.map(\.id))
+    }
+  }
+
+  static func runMutationShortcut(request: ShortcutTagMutationRequest) throws -> ShortcutTagMutationResponse {
+    let rawOutput = try runShortcut(name: ShortcutTagMutation.shortcutName, input: ShortcutTagMutation.encodeRequest(request))
+    return try ShortcutTagMutation.decodeResponse(from: rawOutput)
+  }
+
+  static func runSearchShortcut(tags: [String]) throws -> ShortcutTagSearchPayload {
+    let query = ShortcutTagSearch.makeQuery(tags: try ShortcutTagSearch.normalizeTags(tags))
+    let rawOutput = try runShortcut(name: ShortcutTagSearch.shortcutName, input: ShortcutTagSearch.encodeQuery(query))
+    return try ShortcutTagSearch.decodePayload(from: rawOutput)
+  }
+
+  static func runSearchShortcutRaw(input: String) throws -> [String: Any] {
+    try decodeJSONObject(runShortcut(name: ShortcutTagSearch.shortcutName, input: input))
+  }
+
+  static func runMutationShortcutRaw(input: String) throws -> [String: Any] {
+    try decodeJSONObject(runShortcut(name: ShortcutTagMutation.shortcutName, input: input))
+  }
+
+  static func runRemindctl(_ args: [String]) async throws -> CapturedCommandResult {
+    let router = CommandRouter()
+    return try await captureStandardStreams {
+      await router.run(argv: ["remindctl"] + args)
+    }
+  }
+
+  private static func runShortcut(name: String, input: String) throws -> String {
+    let runFiles = try ShortcutRunFilesFactory.make()
+    defer {
+      try? FileManager.default.removeItem(at: runFiles.directoryURL)
+    }
+
+    let result = try ProcessExecutor.run(
+      executableURL: URL(fileURLWithPath: "/usr/bin/shortcuts"),
+      arguments: [
+        "run",
+        name,
+        "--output-path",
+        runFiles.outputURL.path,
+      ],
+      stdin: input
+    )
+
+    #expect(result.status == 0)
+    return try String(contentsOf: runFiles.outputURL, encoding: .utf8)
+  }
+
+  private static func decodeJSONObject(_ rawOutput: String) throws -> [String: Any] {
+    let object = try JSONSerialization.jsonObject(with: Data(rawOutput.utf8))
+    guard let dictionary = object as? [String: Any] else {
+      Issue.record("Shortcut output was not a JSON object: \(rawOutput)")
+      return [:]
+    }
+    return dictionary
+  }
+
+  private static func captureStandardStreams(
+    operation: () async throws -> Int32
+  ) async throws -> CapturedCommandResult {
+    let stdoutPipe = Pipe()
+    let stderrPipe = Pipe()
+    let savedStdout = dup(STDOUT_FILENO)
+    let savedStderr = dup(STDERR_FILENO)
+    precondition(savedStdout != -1 && savedStderr != -1, "Failed to duplicate standard file descriptors")
+
+    fflush(stdout)
+    fflush(stderr)
+    dup2(stdoutPipe.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
+    dup2(stderrPipe.fileHandleForWriting.fileDescriptor, STDERR_FILENO)
+
+    let exitCode: Int32
+    do {
+      exitCode = try await operation()
+    } catch {
+      fflush(stdout)
+      fflush(stderr)
+      dup2(savedStdout, STDOUT_FILENO)
+      dup2(savedStderr, STDERR_FILENO)
+      close(savedStdout)
+      close(savedStderr)
+      try? stdoutPipe.fileHandleForWriting.close()
+      try? stderrPipe.fileHandleForWriting.close()
+      throw error
+    }
+
+    fflush(stdout)
+    fflush(stderr)
+    dup2(savedStdout, STDOUT_FILENO)
+    dup2(savedStderr, STDERR_FILENO)
+    close(savedStdout)
+    close(savedStderr)
+
+    try? stdoutPipe.fileHandleForWriting.close()
+    try? stderrPipe.fileHandleForWriting.close()
+
+    let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+    let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+
+    return CapturedCommandResult(
+      exitCode: exitCode,
+      stdout: String(decoding: stdoutData, as: UTF8.self),
+      stderr: String(decoding: stderrData, as: UTF8.self)
+    )
+  }
+}

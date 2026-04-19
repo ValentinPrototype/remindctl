@@ -18,6 +18,7 @@ enum AddCommand {
             .make(label: "list", names: [.short("l"), .long("list")], help: "List name", parsing: .singleValue),
             .make(label: "due", names: [.short("d"), .long("due")], help: "Due date", parsing: .singleValue),
             .make(label: "notes", names: [.short("n"), .long("notes")], help: "Notes", parsing: .singleValue),
+            .make(label: "tag", names: [.long("tag")], help: "Apply one or more tags after creation (repeatable)", parsing: .singleValue),
             .make(
               label: "priority",
               names: [.short("p"), .long("priority")],
@@ -31,6 +32,7 @@ enum AddCommand {
         "remindctl add \"Buy milk\"",
         "remindctl add --title \"Call mom\" --list Personal --due tomorrow",
         "remindctl add \"Review docs\" --priority high",
+        "remindctl add \"Ship v1\" --tag active-project --tag area-work",
       ]
     ) { values, runtime in
       let titleOption = values.option("title")
@@ -56,6 +58,7 @@ enum AddCommand {
       let notes = values.option("notes")
       let dueValue = values.option("due")
       let priorityValue = values.option("priority")
+      let tagOperation = try CommandHelpers.parseAddTagOperation(values.optionValues("tag"))
 
       let dueDate = try dueValue.map(CommandHelpers.parseDueDate)
       let priority = try priorityValue.map(CommandHelpers.parsePriority) ?? .none
@@ -75,6 +78,18 @@ enum AddCommand {
 
       let draft = ReminderDraft(title: title, notes: notes, dueDate: dueDate, priority: priority)
       let reminder = try await store.createReminder(draft, listName: targetList)
+
+      if let tagOperation {
+        let mutationTarget = try await store.mutationTarget(forReminderID: reminder.id)
+        do {
+          try ShortcutTagMutation.apply([tagOperation], to: mutationTarget)
+        } catch {
+          throw RemindCoreError.operationFailed(
+            "Reminder created, but tag mutation failed. \(error.localizedDescription)"
+          )
+        }
+      }
+
       OutputRenderer.printReminder(reminder, format: runtime.outputFormat)
     }
   }

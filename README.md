@@ -51,6 +51,34 @@ remindctl show completed --tag active-project
 If the shortcut is missing or renamed, `remindctl` fails with a setup error explaining that
 the helper shortcut is required for `--tag` searches.
 
+## Tag Mutation Setup
+True tag mutation is powered by a separate Apple Shortcut helper. The helper must be installed in the
+Shortcuts app with this exact name:
+
+`remindctl - Mutate Reminder Tags`
+
+Command usage:
+
+```bash
+remindctl add "Ship v1" --tag active-project --tag area-work
+remindctl edit 2 --set-tag active-project --set-tag area-work   # additive; keeps existing tags
+remindctl edit 2 --add-tag waiting-on --remove-tag next-action
+remindctl edit 2 --clear-tags
+```
+
+The helper contract is documented in
+[Support/Shortcuts/TAG_MUTATION_SHORTCUT.md](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/TAG_MUTATION_SHORTCUT.md).
+If the helper shortcut is missing or renamed, `remindctl` fails with a setup error when a tag mutation is requested.
+
+Installed-shortcut coverage is opt-in during tests:
+
+```bash
+REMINDCTL_RUN_LIVE_SHORTCUT_TESTS=1 swift test
+REMINDCTL_RUN_LIVE_SHORTCUT_TESTS=1 REMINDCTL_RUN_REMINDER_E2E_TESTS=1 swift test
+```
+
+Default `swift test` does not invoke the installed Shortcuts app helpers.
+
 ## GTD Shortcut Assets
 The long-term GTD Shortcut contract catalog, fixtures, and shipped assets live under
 [Support/Shortcuts](/Users/vk/work/openclaw/remindctl/Support/Shortcuts).
@@ -79,7 +107,11 @@ remindctl list Projects --create
 
 remindctl add "Buy milk"
 remindctl add --title "Call mom" --list Personal --due tomorrow
+remindctl add "Ship v1" --tag active-project
 remindctl edit 1 --title "New title" --due 2026-01-04
+remindctl edit 2 --set-tag active-project --set-tag area-work
+remindctl edit 2 --add-tag waiting-on --remove-tag next-action
+remindctl edit 2 --clear-tags
 remindctl complete 1 2 3
 remindctl delete 4A83 --force
 remindctl status                # permission status

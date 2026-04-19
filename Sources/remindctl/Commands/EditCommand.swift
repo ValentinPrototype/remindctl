@@ -18,6 +18,9 @@ enum EditCommand {
             .make(label: "list", names: [.short("l"), .long("list")], help: "Move to list", parsing: .singleValue),
             .make(label: "due", names: [.short("d"), .long("due")], help: "Set due date", parsing: .singleValue),
             .make(label: "notes", names: [.short("n"), .long("notes")], help: "Set notes", parsing: .singleValue),
+            .make(label: "setTag", names: [.long("set-tag")], help: "Ensure tag(s) are present without removing existing ones (repeatable)", parsing: .singleValue),
+            .make(label: "addTag", names: [.long("add-tag")], help: "Add tag(s) incrementally (repeatable)", parsing: .singleValue),
+            .make(label: "removeTag", names: [.long("remove-tag")], help: "Remove tag(s) incrementally (repeatable)", parsing: .singleValue),
             .make(
               label: "priority",
               names: [.short("p"), .long("priority")],
@@ -27,6 +30,7 @@ enum EditCommand {
           ],
           flags: [
             .make(label: "clearDue", names: [.long("clear-due")], help: "Clear due date"),
+            .make(label: "clearTags", names: [.long("clear-tags")], help: "Remove all tags"),
             .make(label: "complete", names: [.long("complete")], help: "Mark completed"),
             .make(label: "incomplete", names: [.long("incomplete")], help: "Mark incomplete"),
           ]
@@ -37,6 +41,8 @@ enum EditCommand {
         "remindctl edit 4A83 --due tomorrow",
         "remindctl edit 2 --priority high --notes \"Call before noon\"",
         "remindctl edit 3 --clear-due",
+        "remindctl edit 2 --set-tag active-project --set-tag area-work",
+        "remindctl edit 2 --add-tag waiting-on --remove-tag next-action",
       ]
     ) { values, runtime in
       guard let input = values.argument(0) else {
@@ -54,6 +60,12 @@ enum EditCommand {
       let title = values.option("title")
       let listName = values.option("list")
       let notes = values.option("notes")
+      let tagOperations = try CommandHelpers.parseEditTagOperations(
+        setTags: values.optionValues("setTag"),
+        addTags: values.optionValues("addTag"),
+        removeTags: values.optionValues("removeTag"),
+        clearTags: values.flag("clearTags")
+      )
 
       var dueUpdate: Date??
       if let dueValue = values.option("due") {
@@ -78,21 +90,38 @@ enum EditCommand {
       }
       let isCompleted: Bool? = completeFlag ? true : (incompleteFlag ? false : nil)
 
-      if title == nil && listName == nil && notes == nil && dueUpdate == nil && priority == nil && isCompleted == nil {
+      let hasNativeChanges = title != nil || listName != nil || notes != nil || dueUpdate != nil || priority != nil || isCompleted != nil
+      if hasNativeChanges == false && tagOperations.isEmpty {
         throw RemindCoreError.operationFailed("No changes specified")
       }
 
-      let update = ReminderUpdate(
-        title: title,
-        notes: notes,
-        dueDate: dueUpdate,
-        priority: priority,
-        listName: listName,
-        isCompleted: isCompleted
-      )
+      let updatedReminder: ReminderItem
+      if hasNativeChanges {
+        let update = ReminderUpdate(
+          title: title,
+          notes: notes,
+          dueDate: dueUpdate,
+          priority: priority,
+          listName: listName,
+          isCompleted: isCompleted
+        )
 
-      let updated = try await store.updateReminder(id: reminder.id, update: update)
-      OutputRenderer.printReminder(updated, format: runtime.outputFormat)
+        updatedReminder = try await store.updateReminder(id: reminder.id, update: update)
+      } else {
+        updatedReminder = reminder
+      }
+
+      if tagOperations.isEmpty == false {
+        let mutationTarget = try await store.mutationTarget(forReminderID: updatedReminder.id)
+        do {
+          try ShortcutTagMutation.apply(tagOperations, to: mutationTarget)
+        } catch {
+          let prefix = hasNativeChanges ? "Reminder updated, but tag mutation failed." : "Tag mutation failed."
+          throw RemindCoreError.operationFailed("\(prefix) \(error.localizedDescription)")
+        }
+      }
+
+      OutputRenderer.printReminder(updatedReminder, format: runtime.outputFormat)
     }
   }
 }

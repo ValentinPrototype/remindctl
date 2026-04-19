@@ -56,6 +56,6 @@ Hierarchy items additionally emit:
 ## Current Shipped Transport Shortcut
 
 The existing helper Shortcut:
-- `remindctl - Search Reminders By Tag with JSON Output`
+- `remindctl - Search By Tag`
 
 is a transport/reference Shortcut for current `show --tag` behavior. It is not the full GTD contract catalog and should not be used as the canonical identity model.

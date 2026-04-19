@@ -6,8 +6,8 @@ import Testing
 struct ShortcutAssetTests {
   @Test("Shortcut integration names remain stable")
   func shortcutNamesRemainStable() {
-    #expect(ShortcutTagSearch.shortcutName == "remindctl - Search Reminders By Tag with JSON Output")
-    #expect(ShortcutTagMutation.shortcutName == "remindctl - Mutate Reminder Tags")
+    #expect(ShortcutTagSearch.shortcutName == "remindctl - Search By Tag")
+    #expect(ShortcutTagMutation.shortcutName == "remindctl - Mutate Tags")
   }
 
   @Test("Canonical search shortcut asset exists in Support/Shortcuts")
@@ -29,7 +29,7 @@ struct ShortcutAssetTests {
       .deletingLastPathComponent()
       .deletingLastPathComponent()
       .deletingLastPathComponent()
-      .appendingPathComponent("Support/Shortcuts/remindctl - Search Reminders By Tag with JSON Output.shortcut")
+      .appendingPathComponent("Support/Shortcuts/remindctl - Search By Tag.shortcut")
   }
 
   private var compatibilityShortcutURL: URL {
@@ -37,6 +37,6 @@ struct ShortcutAssetTests {
       .deletingLastPathComponent()
       .deletingLastPathComponent()
       .deletingLastPathComponent()
-      .appendingPathComponent("remindctl - Search Reminders By Tag with JSON Output.shortcut")
+      .appendingPathComponent("remindctl - Search By Tag.shortcut")
   }
 }

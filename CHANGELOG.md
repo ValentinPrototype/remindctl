@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0 - 2026-04-19
+- Add Shortcut-backed reminder tag search and tag mutation
+- Ship stable Shortcut assets for `remindctl - Search By Tag` and `remindctl - Mutate Tags`
+- Add live Shortcut contract tests and end-to-end tag workflow coverage
+
 ## 0.1.1 - 2026-01-11
 - Fix Swift 6 strict concurrency crash when fetching reminders
 

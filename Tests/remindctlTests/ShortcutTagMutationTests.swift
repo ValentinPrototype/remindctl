@@ -32,7 +32,7 @@ struct ShortcutTagMutationTests {
     #expect(
       args == [
         "run",
-        "remindctl - Mutate Reminder Tags",
+        "remindctl - Mutate Tags",
         "--output-path",
         "/workspace/output.txt",
       ]
@@ -205,8 +205,8 @@ struct ShortcutTagMutationTests {
 
   @Test("Shortcut names stay aligned with the documented integration surface")
   func documentedShortcutNames() {
-    #expect(ShortcutTagMutation.shortcutName == "remindctl - Mutate Reminder Tags")
-    #expect(ShortcutTagSearch.shortcutName == "remindctl - Search Reminders By Tag with JSON Output")
+    #expect(ShortcutTagMutation.shortcutName == "remindctl - Mutate Tags")
+    #expect(ShortcutTagSearch.shortcutName == "remindctl - Search By Tag")
   }
 
   @Test("Mutation target keeps the native reminder and canonical managed IDs")

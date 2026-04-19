@@ -3,7 +3,7 @@
 The helper Shortcut used by `remindctl` for true Apple Reminders tag mutation must be installed in
 the Shortcuts app with this exact name:
 
-`remindctl - Mutate Reminder Tags`
+`remindctl - Mutate Tags`
 
 ## Purpose
 

@@ -9,7 +9,7 @@ Use this directory for two different kinds of Shortcut artifacts:
 - fixed, versioned GTD acquisition contracts implemented by the Shortcut team in parallel
 
 The current shipped/read helpers are:
-- `remindctl - Search Reminders By Tag with JSON Output.shortcut`
+- `remindctl - Search By Tag.shortcut`
 
 The tag mutation helper contract is documented in:
 - [TAG_MUTATION_SHORTCUT.md](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/TAG_MUTATION_SHORTCUT.md)

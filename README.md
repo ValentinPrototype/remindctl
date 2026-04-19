@@ -33,10 +33,10 @@ make check                     # lint + test + coverage gate
 Tag search is powered by an Apple Shortcut helper. The transport shortcut must be installed in the
 Shortcuts app with this exact name:
 
-`remindctl - Search Reminders By Tag with JSON Output`
+`remindctl - Search By Tag`
 
 Install steps:
-- Open [Support/Shortcuts/remindctl - Search Reminders By Tag with JSON Output.shortcut](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/remindctl%20-%20Search%20Reminders%20By%20Tag%20with%20JSON%20Output.shortcut) in Finder, or drag it into the Shortcuts app.
+- Open [Support/Shortcuts/remindctl - Search By Tag.shortcut](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/remindctl%20-%20Search%20By%20Tag.shortcut) in Finder, or drag it into the Shortcuts app.
 - Click `Add Shortcut` when macOS asks to import it.
 - Do not rename the shortcut after import.
 
@@ -55,7 +55,7 @@ the helper shortcut is required for `--tag` searches.
 True tag mutation is powered by a separate Apple Shortcut helper. The helper must be installed in the
 Shortcuts app with this exact name:
 
-`remindctl - Mutate Reminder Tags`
+`remindctl - Mutate Tags`
 
 Command usage:
 

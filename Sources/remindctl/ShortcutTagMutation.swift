@@ -144,7 +144,7 @@ struct ShortcutTagMutationResponse: Decodable, Sendable, Equatable {
 }
 
 enum ShortcutTagMutation {
-  static let shortcutName = "remindctl - Mutate Reminder Tags"
+  static let shortcutName = "remindctl - Mutate Tags"
 
   static func requests(
     for operations: [ReminderTagMutationOperation],

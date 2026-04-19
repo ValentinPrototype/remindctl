@@ -262,7 +262,7 @@ struct ShortcutSearchQueryV1: Encodable, Sendable, Equatable {
 }
 
 enum ShortcutTagSearch {
-  static let shortcutName = "remindctl - Search Reminders By Tag with JSON Output"
+  static let shortcutName = "remindctl - Search By Tag"
 
   static func search(tag rawTag: String) throws -> [ShortcutTagReminder] {
     try search(tags: [rawTag])

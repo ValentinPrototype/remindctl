@@ -58,7 +58,7 @@ struct ShortcutTagSearchTests {
     #expect(
       args == [
         "run",
-        "remindctl - Search Reminders By Tag with JSON Output",
+        "remindctl - Search By Tag",
         "--output-path",
         "/workspace/output.txt",
       ]

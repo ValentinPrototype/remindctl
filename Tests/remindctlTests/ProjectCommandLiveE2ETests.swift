@@ -160,6 +160,61 @@ struct ProjectCommandLiveE2ETests {
     }
   }
 
+  @Test("Project show reads the live hierarchy")
+  func projectShowReadsLiveHierarchy() async throws {
+    guard Self.shouldRunProjectE2ETests else { return }
+
+    let runID = UUID().uuidString
+    let projectTitle = "Codex Project Show \(runID)"
+    let stepTitle = "Codex Project Show Step \(runID)"
+
+    try await withCleanup(titleFragments: [projectTitle, stepTitle]) { cleanup in
+      let createResult = try await ShortcutLiveTestSupport.runRemindctl([
+        "project",
+        "create",
+        projectTitle,
+        "--area",
+        "work",
+        "--json",
+        "--no-input",
+      ])
+      try requireSuccess(createResult, context: "project create")
+      let project = try decodeReminderJSON(createResult.stdout)
+      cleanup.ids.insert(project.id)
+
+      let addStepResult = try await ShortcutLiveTestSupport.runRemindctl([
+        "project",
+        "add-step",
+        project.id,
+        stepTitle,
+        "--kind",
+        "next-action",
+        "--json",
+        "--no-input",
+      ])
+      try requireSuccess(addStepResult, context: "project add-step")
+
+      let showResult = try await ShortcutLiveTestSupport.runRemindctl([
+        "project",
+        "show",
+        project.id,
+        "--json",
+        "--no-input",
+      ])
+      try requireSuccess(showResult, context: "project show")
+
+      let summary = try decodeProjectHierarchyJSON(showResult.stdout)
+      #expect(summary.projectTitle == projectTitle)
+      #expect(summary.filter == "open")
+      #expect(summary.children.count == 1)
+      let child = try #require(summary.children.first)
+      #expect(child.title == stepTitle)
+      #expect(child.tags.contains("area-work"))
+      #expect(child.tags.contains("next-action"))
+    }
+  }
+
+
   private static var shouldRunProjectE2ETests: Bool {
     ProcessInfo.processInfo.environment["REMINDCTL_RUN_PROJECT_E2E_TESTS"] == "1"
   }
@@ -239,6 +294,24 @@ struct ProjectCommandLiveE2ETests {
     )
   }
 
+  private func decodeProjectHierarchyJSON(_ rawJSON: String) throws -> ProjectE2EHierarchy {
+    let object = try JSONSerialization.jsonObject(with: Data(rawJSON.utf8))
+    guard let dictionary = object as? [String: Any],
+      let filter = dictionary["filter"] as? String,
+      let project = dictionary["project"] as? [String: Any],
+      let projectTitle = project["title"] as? String,
+      let children = dictionary["children"] as? [[String: Any]]
+    else {
+      throw testError("Unexpected project hierarchy JSON output: \(rawJSON)")
+    }
+
+    return ProjectE2EHierarchy(
+      filter: filter,
+      projectTitle: projectTitle,
+      children: children.compactMap(ProjectE2EHierarchyChild.init)
+    )
+  }
+
   private func requireSuccess(_ result: CapturedCommandResult, context: String) throws {
     guard result.exitCode == 0 else {
       throw testError(
@@ -278,6 +351,25 @@ private struct ProjectE2EMutation {
   let resolvedParentCount: Int?
   let resolvedChildCount: Int?
   let childIsSubtask: Bool?
+}
+
+private struct ProjectE2EHierarchy {
+  let filter: String
+  let projectTitle: String
+  let children: [ProjectE2EHierarchyChild]
+}
+
+private struct ProjectE2EHierarchyChild {
+  let title: String
+  let tags: [String]
+
+  init?(json: [String: Any]) {
+    guard let title = json["title"] as? String else {
+      return nil
+    }
+    self.title = title
+    self.tags = json["tags"] as? [String] ?? []
+  }
 }
 
 private struct ProjectE2EReminder {

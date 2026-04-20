@@ -199,23 +199,45 @@ enum ProjectCommand {
 
     let store = RemindersStore()
     try await store.requestAccess()
-    let parentTarget = try await mutationTarget(for: projectInput, store: store)
-    let mirrorURL = if let mirrorPath = values.option("mirror") {
-      URL(fileURLWithPath: mirrorPath)
-    } else {
-      try MirrorPaths.defaultDatabaseURL()
+    let parentReminder = try await reminder(for: projectInput, store: store)
+    let parentTarget = try await store.mutationTarget(forReminderID: parentReminder.id)
+
+    if let mirrorPath = values.option("mirror") {
+      try await showProjectFromMirror(
+        parentManagedID: parentTarget.canonicalManagedID,
+        mirrorURL: URL(fileURLWithPath: mirrorPath),
+        includeAll: values.flag("all"),
+        completedOnly: values.flag("completed"),
+        format: runtime.outputFormat
+      )
+      return
     }
 
+    try showProjectLive(
+      parentManagedID: parentTarget.canonicalManagedID,
+      includeAll: values.flag("all"),
+      completedOnly: values.flag("completed"),
+      format: runtime.outputFormat
+    )
+  }
+
+  private static func showProjectFromMirror(
+    parentManagedID: String,
+    mirrorURL: URL,
+    includeAll: Bool,
+    completedOnly: Bool,
+    format: OutputFormat
+  ) async throws {
     let mirror = try GTDMirrorStore(databaseURL: mirrorURL)
-    let result = try await mirror.queryHierarchy(parentCanonicalID: parentTarget.canonicalManagedID)
+    let result = try await mirror.queryHierarchy(parentCanonicalID: parentManagedID)
     let filteredItems = result.items.filter { item in
-      if values.flag("all") {
+      if includeAll {
         return true
       }
-      if values.flag("completed") {
+      if completedOnly {
         return item.isCompleted
       }
-      return item.canonicalID == parentTarget.canonicalManagedID || item.isCompleted == false
+      return item.canonicalID == parentManagedID || item.isCompleted == false
     }
     let filteredResult = GTDQueryResult(
       queryFamily: result.queryFamily,
@@ -227,7 +249,45 @@ enum ProjectCommand {
       warnings: result.warnings,
       items: filteredItems
     )
-    OutputRenderer.printGTDQueryResult(filteredResult, format: runtime.outputFormat)
+    OutputRenderer.printGTDQueryResult(filteredResult, format: format)
+  }
+
+  private static func showProjectLive(
+    parentManagedID: String,
+    includeAll: Bool,
+    completedOnly: Bool,
+    format: OutputFormat
+  ) throws {
+    let areaTag = try ProjectWorkflow.findAreaTag(forParentManagedID: parentManagedID)
+    let areaReminders = try ShortcutTagSearch.search(tags: [areaTag])
+    let projectMatches = areaReminders.filter { $0.canonicalManagedID == parentManagedID }
+    guard projectMatches.count == 1, let project = projectMatches.first else {
+      throw RemindCoreError.operationFailed(
+        "Expected exactly one project reminder with managed ID \(parentManagedID), found \(projectMatches.count)"
+      )
+    }
+
+    let childTitleSet = Set(project.subTasks)
+    let children = areaReminders
+      .filter { reminder in
+        reminder.canonicalManagedID != project.canonicalManagedID
+          && (reminder.parent == project.title || childTitleSet.contains(reminder.title))
+      }
+      .filter { reminder in
+        if includeAll { return true }
+        if completedOnly { return reminder.isCompleted }
+        return reminder.isCompleted == false
+      }
+
+    OutputRenderer.printProjectHierarchy(
+      ProjectHierarchySummary(
+        source: "live-shortcut",
+        filter: completedOnly ? "completed" : (includeAll ? "all" : "open"),
+        project: ProjectHierarchyReminder(project),
+        children: children.map(ProjectHierarchyReminder.init)
+      ),
+      format: format
+    )
   }
 
   private static func createChild(
@@ -359,6 +419,52 @@ struct ProjectMutationSummary: Codable, Sendable, Equatable {
     case resolvedParentCount = "resolved_parent_count"
     case resolvedChildCount = "resolved_child_count"
     case childIsSubtask = "child_is_subtask"
+  }
+}
+
+struct ProjectHierarchySummary: Codable, Sendable, Equatable {
+  let source: String
+  let filter: String
+  let project: ProjectHierarchyReminder
+  let children: [ProjectHierarchyReminder]
+}
+
+struct ProjectHierarchyReminder: Codable, Sendable, Equatable {
+  let id: String?
+  let managedID: String?
+  let title: String
+  let listName: String
+  let isCompleted: Bool
+  let priority: ReminderPriority
+  let dueAt: Date?
+  let tags: [String]
+  let parentTitle: String?
+  let childTitles: [String]
+
+  init(_ reminder: ShortcutTagReminder) {
+    id = reminder.id
+    managedID = reminder.canonicalManagedID
+    title = reminder.title
+    listName = reminder.listName
+    isCompleted = reminder.isCompleted
+    priority = reminder.priority
+    dueAt = reminder.dueAt
+    tags = reminder.tags
+    parentTitle = reminder.parent
+    childTitles = reminder.subTasks
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case managedID = "managed_id"
+    case title
+    case listName = "list_name"
+    case isCompleted = "is_completed"
+    case priority
+    case dueAt = "due_at"
+    case tags
+    case parentTitle = "parent_title"
+    case childTitles = "child_titles"
   }
 }
 

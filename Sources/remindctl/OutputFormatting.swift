@@ -116,6 +116,19 @@ enum OutputRenderer {
     }
   }
 
+  static func printProjectHierarchy(_ summary: ProjectHierarchySummary, format: OutputFormat) {
+    switch format {
+    case .standard:
+      printLines(renderProjectHierarchyStandard(summary))
+    case .plain:
+      printLines(renderProjectHierarchyPlain(summary))
+    case .json:
+      printJSON(summary)
+    case .quiet:
+      Swift.print(summary.children.count)
+    }
+  }
+
   static func printAuthorizationStatus(_ status: RemindersAuthorizationStatus, format: OutputFormat) {
     switch format {
     case .standard:
@@ -250,6 +263,23 @@ enum OutputRenderer {
     renderRemindersPlain(reminders)
   }
 
+  static func renderProjectHierarchyStandard(_ summary: ProjectHierarchySummary) -> [String] {
+    var lines = [projectHierarchyLine("Project", summary.project)]
+    if summary.children.isEmpty {
+      lines.append("No child reminders found")
+      return lines
+    }
+
+    lines.append(contentsOf: summary.children.map { projectHierarchyLine("  -", $0) })
+    return lines
+  }
+
+  static func renderProjectHierarchyPlain(_ summary: ProjectHierarchySummary) -> [String] {
+    let projectLine = projectHierarchyPlainLine(kind: "project", reminder: summary.project)
+    let childLines = summary.children.map { projectHierarchyPlainLine(kind: "child", reminder: $0) }
+    return [projectLine] + childLines
+  }
+
   private static func renderRemindersStandard<T: ReminderDisplayItem>(_ reminders: [T]) -> [String] {
     let sorted = ReminderFiltering.sort(reminders)
     guard !sorted.isEmpty else {
@@ -278,6 +308,27 @@ enum OutputRenderer {
       reminder.isCompleted ? "1" : "0",
       reminder.priority.rawValue,
       due,
+      reminder.title,
+    ].joined(separator: "\t")
+  }
+
+  private static func projectHierarchyLine(_ prefix: String, _ reminder: ProjectHierarchyReminder) -> String {
+    let status = reminder.isCompleted ? "x" : " "
+    let due = reminder.dueAt.map { DateParsing.formatDisplay($0) } ?? "no due date"
+    let priority = reminder.priority == .none ? "" : " priority=\(reminder.priority.rawValue)"
+    return "\(prefix) [\(status)] \(reminder.title) [\(reminder.listName)] — \(due)\(priority)"
+  }
+
+  private static func projectHierarchyPlainLine(kind: String, reminder: ProjectHierarchyReminder) -> String {
+    [
+      kind,
+      reminder.managedID ?? "",
+      reminder.id ?? "",
+      reminder.listName,
+      reminder.isCompleted ? "1" : "0",
+      reminder.priority.rawValue,
+      reminder.dueAt.map { isoFormatter().string(from: $0) } ?? "",
+      reminder.parentTitle ?? "",
       reminder.title,
     ].joined(separator: "\t")
   }

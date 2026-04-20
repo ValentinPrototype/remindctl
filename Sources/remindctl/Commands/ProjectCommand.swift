@@ -122,7 +122,7 @@ enum ProjectCommand {
       dueDate: dueDate
     )
 
-    let childManagedID = try await createChild(
+    let childResult = try await createChild(
       parentManagedID: parentTarget.canonicalManagedID,
       title: title,
       notes: values.option("notes"),
@@ -134,7 +134,7 @@ enum ProjectCommand {
       failurePrefix: "Project step creation failed."
     )
 
-    printChildResult(title: title, managedID: childManagedID, format: runtime.outputFormat)
+    printChildResult(title: title, result: childResult, format: runtime.outputFormat)
   }
 
   private static func attachTask(values: ParsedValues, runtime: RuntimeOptions) async throws {
@@ -149,23 +149,24 @@ enum ProjectCommand {
       throw RemindCoreError.operationFailed("Cannot attach a project to itself")
     }
 
+    let areaTag = try ProjectWorkflow.findAreaTag(forParentManagedID: parentTarget.canonicalManagedID)
+    do {
+      try ShortcutTagMutation.apply(.add([areaTag]), to: childTarget)
+    } catch {
+      throw RemindCoreError.operationFailed("Project attach failed before hierarchy mutation. Inherited area tag mutation failed. \(error.localizedDescription)")
+    }
+
     let request = ShortcutHierarchyMutationRequest(
       operation: .attachExisting(
         parentManagedID: parentTarget.canonicalManagedID,
         childManagedID: childTarget.canonicalManagedID
       )
     )
+    let response: ShortcutHierarchyMutationResponse
     do {
-      _ = try ShortcutHierarchyMutation.apply(request)
+      response = try ShortcutHierarchyMutation.apply(request)
     } catch {
       throw RemindCoreError.operationFailed("Project attach failed. \(error.localizedDescription)")
-    }
-
-    let areaTag = try ProjectWorkflow.findAreaTag(forParentManagedID: parentTarget.canonicalManagedID)
-    do {
-      try ShortcutTagMutation.apply(.add([areaTag]), to: childTarget)
-    } catch {
-      throw RemindCoreError.operationFailed("Task attached, but inherited area tag mutation failed. \(error.localizedDescription)")
     }
 
     switch runtime.outputFormat {
@@ -178,7 +179,10 @@ enum ProjectCommand {
         ProjectMutationSummary(
           operation: "attach_existing",
           parentManagedID: parentTarget.canonicalManagedID,
-          childManagedID: childTarget.canonicalManagedID
+          childManagedID: childTarget.canonicalManagedID,
+          resolvedParentCount: response.resolvedParentCount,
+          resolvedChildCount: response.resolvedChildCount,
+          childIsSubtask: response.childIsSubtask
         ),
         format: .json
       )
@@ -236,7 +240,7 @@ enum ProjectCommand {
     listName: String,
     store: RemindersStore,
     failurePrefix: String
-  ) async throws -> String {
+  ) async throws -> ProjectChildCreationResult {
     let childManagedID = CanonicalNoteFooter.generateCanonicalManagedID()
     let childNotes = CanonicalNoteFooter.render(notesBody: notes, canonicalManagedID: childManagedID)
 
@@ -263,13 +267,17 @@ enum ProjectCommand {
         childManagedID: childManagedID
       )
     )
+    let response: ShortcutHierarchyMutationResponse
     do {
-      _ = try ShortcutHierarchyMutation.apply(request)
+      response = try ShortcutHierarchyMutation.apply(request)
     } catch {
       throw RemindCoreError.operationFailed("\(failurePrefix) Child was created, but hierarchy attach failed. \(error.localizedDescription)")
     }
 
-    return childManagedID
+    return ProjectChildCreationResult(
+      childManagedID: childManagedID,
+      hierarchyResponse: response
+    )
   }
 
   private static func reminder(for input: String, store: RemindersStore) async throws -> ReminderItem {
@@ -307,15 +315,22 @@ enum ProjectCommand {
     return value
   }
 
-  private static func printChildResult(title: String, managedID: String, format: OutputFormat) {
+  private static func printChildResult(title: String, result: ProjectChildCreationResult, format: OutputFormat) {
     switch format {
     case .standard:
-      Swift.print("✓ \(title) child=\(managedID)")
+      Swift.print("✓ \(title) child=\(result.childManagedID)")
     case .plain:
-      Swift.print("\(managedID)\t\(title)")
+      Swift.print("\(result.childManagedID)\t\(title)")
     case .json:
       OutputRenderer.printProjectMutation(
-        ProjectMutationSummary(operation: "create_child", parentManagedID: nil, childManagedID: managedID),
+        ProjectMutationSummary(
+          operation: "create_child",
+          parentManagedID: result.hierarchyResponse.parentManagedID,
+          childManagedID: result.childManagedID,
+          resolvedParentCount: result.hierarchyResponse.resolvedParentCount,
+          resolvedChildCount: result.hierarchyResponse.resolvedChildCount,
+          childIsSubtask: result.hierarchyResponse.childIsSubtask
+        ),
         format: .json
       )
     case .quiet:
@@ -324,15 +339,26 @@ enum ProjectCommand {
   }
 }
 
+struct ProjectChildCreationResult: Sendable, Equatable {
+  let childManagedID: String
+  let hierarchyResponse: ShortcutHierarchyMutationResponse
+}
+
 struct ProjectMutationSummary: Codable, Sendable, Equatable {
   let operation: String
   let parentManagedID: String?
   let childManagedID: String
+  let resolvedParentCount: Int?
+  let resolvedChildCount: Int?
+  let childIsSubtask: Bool?
 
   private enum CodingKeys: String, CodingKey {
     case operation
     case parentManagedID = "parent_managed_id"
     case childManagedID = "child_managed_id"
+    case resolvedParentCount = "resolved_parent_count"
+    case resolvedChildCount = "resolved_child_count"
+    case childIsSubtask = "child_is_subtask"
   }
 }
 

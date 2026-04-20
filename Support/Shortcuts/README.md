@@ -71,5 +71,6 @@ Repo tests that exercise installed Shortcuts are opt-in. Use:
 - `REMINDCTL_RUN_LIVE_SHORTCUT_TESTS=1 swift test`
 - `REMINDCTL_RUN_LIVE_SHORTCUT_TESTS=1 REMINDCTL_RUN_REMINDER_E2E_TESTS=1 swift test`
 - `REMINDCTL_RUN_LIVE_HIERARCHY_TESTS=1 swift test --filter ShortcutHierarchyMutationLiveTests`
+- `REMINDCTL_RUN_PROJECT_E2E_TESTS=1 swift test --filter ProjectCommandLiveE2ETests`
 
 Default `swift test` validates repo-side adapters and assets, but does not invoke the installed Shortcuts app helpers.

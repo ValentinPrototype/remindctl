@@ -102,6 +102,7 @@ Live hierarchy Shortcut coverage is opt-in:
 
 ```bash
 REMINDCTL_RUN_LIVE_HIERARCHY_TESTS=1 swift test --filter ShortcutHierarchyMutationLiveTests
+REMINDCTL_RUN_PROJECT_E2E_TESTS=1 swift test --filter ProjectCommandLiveE2ETests
 ```
 
 ## GTD Shortcut Assets

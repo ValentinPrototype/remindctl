@@ -180,6 +180,59 @@ struct ShortcutHierarchyMutationLiveTests {
     }
   }
 
+  @Test("Installed hierarchy shortcut fails duplicate parent matches")
+  func duplicateParentMatchesReturnStructuredFailure() async throws {
+    guard Self.shouldRunLiveHierarchyTests else { return }
+
+    try await ShortcutLiveTestSupport.withDuplicateManagedReminders(
+      reminderCount: 2,
+      titlePrefix: "Codex Live Hierarchy Duplicate Parent"
+    ) { fixtures in
+      let parent = try #require(fixtures.first)
+      let childManagedID = UUID().uuidString.lowercased()
+      let request = ShortcutHierarchyMutationRequest(
+        operation: .createChild(
+          parentManagedID: parent.managedID,
+          child: ShortcutHierarchyChildDraft(
+            managedID: childManagedID,
+            title: "Codex Live Hierarchy Duplicate Parent Child \(UUID().uuidString)"
+          )
+        )
+      )
+      let response = try ShortcutLiveTestSupport.runHierarchyShortcut(request: request)
+
+      #expect(response.success == false)
+      #expect(response.errorMessage?.localizedCaseInsensitiveContains("multiple") == true)
+    }
+  }
+
+  @Test("Installed hierarchy shortcut fails duplicate child matches")
+  func duplicateChildMatchesReturnStructuredFailure() async throws {
+    guard Self.shouldRunLiveHierarchyTests else { return }
+
+    try await ShortcutLiveTestSupport.withManagedReminders(
+      seeds: [
+        ManagedReminderSeed(titlePrefix: "Codex Live Hierarchy Duplicate Child Parent", tags: [])
+      ]
+    ) { parentFixtures in
+      let parent = try #require(parentFixtures.first)
+
+      try await ShortcutLiveTestSupport.withDuplicateManagedReminders(
+        reminderCount: 2,
+        titlePrefix: "Codex Live Hierarchy Duplicate Child"
+      ) { childFixtures in
+        let child = try #require(childFixtures.first)
+        let request = ShortcutHierarchyMutationRequest(
+          operation: .attachExisting(parentManagedID: parent.managedID, childManagedID: child.managedID)
+        )
+        let response = try ShortcutLiveTestSupport.runHierarchyShortcut(request: request)
+
+        #expect(response.success == false)
+        #expect(response.errorMessage?.localizedCaseInsensitiveContains("multiple") == true)
+      }
+    }
+  }
+
   private static var shouldRunLiveHierarchyTests: Bool {
     ProcessInfo.processInfo.environment["REMINDCTL_RUN_LIVE_HIERARCHY_TESTS"] == "1"
   }

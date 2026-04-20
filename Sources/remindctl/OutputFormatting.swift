@@ -102,6 +102,20 @@ enum OutputRenderer {
     }
   }
 
+  static func printProjectMutation(_ summary: ProjectMutationSummary, format: OutputFormat) {
+    switch format {
+    case .standard:
+      let parent = summary.parentManagedID.map { " parent=\($0)" } ?? ""
+      Swift.print("\(summary.operation) child=\(summary.childManagedID)\(parent)")
+    case .plain:
+      Swift.print([summary.operation, summary.parentManagedID ?? "", summary.childManagedID].joined(separator: "\t"))
+    case .json:
+      printJSON(summary)
+    case .quiet:
+      break
+    }
+  }
+
   static func printAuthorizationStatus(_ status: RemindersAuthorizationStatus, format: OutputFormat) {
     switch format {
     case .standard:

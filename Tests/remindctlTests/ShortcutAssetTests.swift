@@ -8,6 +8,7 @@ struct ShortcutAssetTests {
   func shortcutNamesRemainStable() {
     #expect(ShortcutTagSearch.shortcutName == "remindctl - Search By Tag")
     #expect(ShortcutTagMutation.shortcutName == "remindctl - Mutate Tags")
+    #expect(ShortcutHierarchyMutation.shortcutName == "remindctl - Mutate Hierarchy")
   }
 
   @Test("Canonical search shortcut asset exists in Support/Shortcuts")

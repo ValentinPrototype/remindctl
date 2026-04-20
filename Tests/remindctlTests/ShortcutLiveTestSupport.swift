@@ -122,6 +122,11 @@ enum ShortcutLiveTestSupport {
     return try ShortcutTagMutation.decodeResponse(from: rawOutput)
   }
 
+  static func runHierarchyShortcut(request: ShortcutHierarchyMutationRequest) throws -> ShortcutHierarchyMutationResponse {
+    let rawOutput = try runShortcut(name: ShortcutHierarchyMutation.shortcutName, input: ShortcutHierarchyMutation.encodeRequest(request))
+    return try ShortcutHierarchyMutation.decodeResponse(from: rawOutput)
+  }
+
   static func runSearchShortcut(tags: [String]) throws -> ShortcutTagSearchPayload {
     let query = ShortcutTagSearch.makeQuery(tags: try ShortcutTagSearch.normalizeTags(tags))
     let rawOutput = try runShortcut(name: ShortcutTagSearch.shortcutName, input: ShortcutTagSearch.encodeQuery(query))
@@ -134,6 +139,10 @@ enum ShortcutLiveTestSupport {
 
   static func runMutationShortcutRaw(input: String) throws -> [String: Any] {
     try decodeJSONObject(runShortcut(name: ShortcutTagMutation.shortcutName, input: input))
+  }
+
+  static func runHierarchyShortcutRaw(input: String) throws -> [String: Any] {
+    try decodeJSONObject(runShortcut(name: ShortcutHierarchyMutation.shortcutName, input: input))
   }
 
   static func runRemindctl(_ args: [String]) async throws -> CapturedCommandResult {

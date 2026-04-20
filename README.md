@@ -79,6 +79,31 @@ REMINDCTL_RUN_LIVE_SHORTCUT_TESTS=1 REMINDCTL_RUN_REMINDER_E2E_TESTS=1 swift tes
 
 Default `swift test` does not invoke the installed Shortcuts app helpers.
 
+## Project Hierarchy Setup
+True sub-reminder mutation is powered by a separate Apple Shortcut helper. The helper must be installed in the
+Shortcuts app with this exact name:
+
+`remindctl - Mutate Hierarchy`
+
+Command usage:
+
+```bash
+remindctl project create "Ship v1" --area work --step "Draft release notes"
+remindctl project add-step 2 "Email supplier" --kind next-action --context messenger --energy low
+remindctl project attach 4 --to 2
+remindctl project show 2 --all
+```
+
+The helper contract is documented in
+[Support/Shortcuts/HIERARCHY_MUTATION_SHORTCUT.md](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/HIERARCHY_MUTATION_SHORTCUT.md).
+Tags are still handled by `remindctl - Mutate Tags`; the hierarchy helper only creates or attaches true subtasks.
+
+Live hierarchy Shortcut coverage is opt-in:
+
+```bash
+REMINDCTL_RUN_LIVE_HIERARCHY_TESTS=1 swift test --filter ShortcutHierarchyMutationLiveTests
+```
+
 ## GTD Shortcut Assets
 The long-term GTD Shortcut contract catalog, fixtures, and shipped assets live under
 [Support/Shortcuts](/Users/vk/work/openclaw/remindctl/Support/Shortcuts).
@@ -112,6 +137,10 @@ remindctl edit 1 --title "New title" --due 2026-01-04
 remindctl edit 2 --set-tag active-project --set-tag area-work
 remindctl edit 2 --add-tag waiting-on --remove-tag next-action
 remindctl edit 2 --clear-tags
+remindctl project create "Ship v1" --area work --step "Draft release notes"
+remindctl project add-step 2 "Email supplier" --kind next-action --context messenger --energy low
+remindctl project attach 4 --to 2
+remindctl project show 2 --all
 remindctl complete 1 2 3
 remindctl delete 4A83 --force
 remindctl status                # permission status

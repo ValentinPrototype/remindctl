@@ -57,5 +57,7 @@ Hierarchy items additionally emit:
 
 The existing helper Shortcut:
 - `remindctl - Search By Tag`
+- `remindctl - Mutate Tags`
+- `remindctl - Mutate Hierarchy`
 
-is a transport/reference Shortcut for current `show --tag` behavior. It is not the full GTD contract catalog and should not be used as the canonical identity model.
+is the current transport/reference Shortcut set for live CLI behavior. It is not the full GTD contract catalog and should not be used as the canonical identity model.

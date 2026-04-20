@@ -13,6 +13,7 @@ struct ShortcutTagReminder: Codable, Sendable, Equatable, ReminderFilteringItem 
   let id: String?
   let title: String
   let notes: String?
+  let canonicalManagedID: String?
   let isCompleted: Bool
   let completedAt: Date?
   let priority: ReminderPriority
@@ -60,6 +61,7 @@ struct ShortcutTagReminder: Codable, Sendable, Equatable, ReminderFilteringItem 
     id: String?,
     title: String,
     notes: String?,
+    canonicalManagedID: String? = nil,
     isCompleted: Bool,
     completedAt: Date?,
     priority: ReminderPriority,
@@ -79,7 +81,9 @@ struct ShortcutTagReminder: Codable, Sendable, Equatable, ReminderFilteringItem 
   ) {
     self.id = id
     self.title = title
-    self.notes = CanonicalNoteFooter.parse(rawNotes: notes).notesBody
+    let parsedNotes = CanonicalNoteFooter.parse(rawNotes: notes)
+    self.notes = parsedNotes.notesBody
+    self.canonicalManagedID = canonicalManagedID ?? parsedNotes.canonicalManagedID
     self.isCompleted = isCompleted
     self.completedAt = completedAt
     self.priority = priority
@@ -103,9 +107,9 @@ struct ShortcutTagReminder: Codable, Sendable, Equatable, ReminderFilteringItem 
 
     id = try Self.decodeOptionalString(from: container, key: .id)
     title = try container.decode(String.self, forKey: .title)
-    notes = CanonicalNoteFooter.parse(
-      rawNotes: try Self.decodeOptionalString(from: container, key: .notes)
-    ).notesBody
+    let parsedNotes = CanonicalNoteFooter.parse(rawNotes: try Self.decodeOptionalString(from: container, key: .notes))
+    notes = parsedNotes.notesBody
+    canonicalManagedID = parsedNotes.canonicalManagedID
     isCompleted = try container.decode(Bool.self, forKey: .isCompleted)
     completedAt = try Self.decodeOptionalDate(from: container, key: .completedAt)
     priority = try Self.decodePriority(from: container, key: .priority)
@@ -320,8 +324,8 @@ enum ShortcutTagSearch {
     guard !tag.isEmpty else {
       throw RemindCoreError.operationFailed("Tag cannot be empty after normalization.")
     }
-    guard tag.range(of: #"^[A-Za-z0-9_-]+$"#, options: .regularExpression) != nil else {
-      throw RemindCoreError.operationFailed("Invalid tag: \"\(rawTag)\" (use letters, numbers, hyphen, or underscore)")
+    guard tag.range(of: #"^[A-Za-z0-9_/-]+$"#, options: .regularExpression) != nil else {
+      throw RemindCoreError.operationFailed("Invalid tag: \"\(rawTag)\" (use letters, numbers, hyphen, slash, or underscore)")
     }
 
     return tag.lowercased()

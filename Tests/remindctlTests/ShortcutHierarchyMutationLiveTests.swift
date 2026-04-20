@@ -80,11 +80,12 @@ struct ShortcutHierarchyMutationLiveTests {
   func zeroMatchParentReturnsStructuredFailure() throws {
     guard Self.shouldRunLiveHierarchyTests else { return }
 
+    let childManagedID = "22222222-2222-4222-8222-222222222222"
     let request = ShortcutHierarchyMutationRequest(
       operation: .createChild(
         parentManagedID: "11111111-1111-4111-8111-111111111111",
         child: ShortcutHierarchyChildDraft(
-          managedID: "22222222-2222-4222-8222-222222222222",
+          managedID: childManagedID,
           title: "Codex Missing Parent Child"
         )
       )
@@ -92,6 +93,27 @@ struct ShortcutHierarchyMutationLiveTests {
     let response = try ShortcutLiveTestSupport.runHierarchyShortcut(request: request)
 
     #expect(response.success == false)
+    #expect(response.operation == .createChild)
+    #expect(response.parentManagedID == request.parentManagedID)
+    #expect(response.resolvedParentCount == 0)
+    #expect(response.errorMessage?.isEmpty == false)
+  }
+
+  @Test("Installed hierarchy shortcut reads top-level child_managed_id for attach-existing")
+  func zeroMatchAttachExistingReadsTopLevelChildManagedID() throws {
+    guard Self.shouldRunLiveHierarchyTests else { return }
+
+    let request = ShortcutHierarchyMutationRequest(
+      operation: .attachExisting(
+        parentManagedID: "11111111-1111-4111-8111-111111111111",
+        childManagedID: "22222222-2222-4222-8222-222222222222"
+      )
+    )
+    let response = try ShortcutLiveTestSupport.runHierarchyShortcut(request: request)
+
+    #expect(response.success == false)
+    #expect(response.operation == .attachExisting)
+    #expect(response.parentManagedID == request.parentManagedID)
     #expect(response.resolvedParentCount == 0)
     #expect(response.errorMessage?.isEmpty == false)
   }
@@ -113,8 +135,7 @@ struct ShortcutHierarchyMutationLiveTests {
           child: ShortcutHierarchyChildDraft(
             managedID: childManagedID,
             title: "Codex Live Hierarchy Child \(UUID().uuidString)",
-            notes: "Created by live hierarchy test",
-            priority: .low
+            notes: "Created by live hierarchy test"
           )
         )
       )

@@ -11,6 +11,7 @@ Use this directory for two different kinds of Shortcut artifacts:
 The current shipped helpers are:
 - `remindctl - Search By Tag.shortcut`
 - `remindctl - Mutate Tags.shortcut`
+- `remindctl - Mutate Hierarchy.shortcut`
 
 The tag mutation helper contract is documented in:
 - [TAG_MUTATION_SHORTCUT.md](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/TAG_MUTATION_SHORTCUT.md)

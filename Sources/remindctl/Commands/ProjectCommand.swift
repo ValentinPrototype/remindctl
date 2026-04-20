@@ -86,13 +86,15 @@ enum ProjectCommand {
     }
 
     for stepTitle in values.optionValues("step") {
-      _ = try createChild(
+      _ = try await createChild(
         parentManagedID: projectTarget.canonicalManagedID,
         title: stepTitle,
         notes: nil,
         dueDate: nil,
         priority: .none,
         tags: [areaTag],
+        listName: targetList,
+        store: store,
         failurePrefix: "Project created, but initial step creation failed."
       )
     }
@@ -109,7 +111,8 @@ enum ProjectCommand {
 
     let store = RemindersStore()
     try await store.requestAccess()
-    let parentTarget = try await mutationTarget(for: projectInput, store: store)
+    let parentReminder = try await reminder(for: projectInput, store: store)
+    let parentTarget = try await store.mutationTarget(forReminderID: parentReminder.id)
     let areaTag = try ProjectWorkflow.findAreaTag(forParentManagedID: parentTarget.canonicalManagedID)
     let tags = try ProjectWorkflow.childTags(
       areaTag: areaTag,
@@ -119,13 +122,15 @@ enum ProjectCommand {
       dueDate: dueDate
     )
 
-    let childManagedID = try createChild(
+    let childManagedID = try await createChild(
       parentManagedID: parentTarget.canonicalManagedID,
       title: title,
       notes: values.option("notes"),
       dueDate: dueDate,
       priority: priority,
       tags: tags,
+      listName: parentReminder.listName,
+      store: store,
       failurePrefix: "Project step creation failed."
     )
 
@@ -228,32 +233,52 @@ enum ProjectCommand {
     dueDate: Date?,
     priority: ReminderPriority,
     tags: [String],
+    listName: String,
+    store: RemindersStore,
     failurePrefix: String
-  ) throws -> String {
+  ) async throws -> String {
     let childManagedID = CanonicalNoteFooter.generateCanonicalManagedID()
-    let child = ShortcutHierarchyChildDraft(
-      managedID: childManagedID,
-      title: title,
-      notes: notes,
-      dueAt: ProjectWorkflow.isoString(from: dueDate),
-      priority: priority == .none ? nil : priority
-    )
-    let request = ShortcutHierarchyMutationRequest(
-      operation: .createChild(parentManagedID: parentManagedID, child: child)
-    )
+    let childNotes = CanonicalNoteFooter.render(notesBody: notes, canonicalManagedID: childManagedID)
 
+    let childReminder: ReminderItem
     do {
-      _ = try ShortcutHierarchyMutation.apply(request)
+      childReminder = try await store.createReminder(
+        ReminderDraft(title: title, notes: childNotes, dueDate: dueDate, priority: priority),
+        listName: listName
+      )
     } catch {
-      throw RemindCoreError.operationFailed("\(failurePrefix) \(error.localizedDescription)")
+      throw RemindCoreError.operationFailed("\(failurePrefix) Native child creation failed. \(error.localizedDescription)")
     }
 
+    let childTarget = ReminderMutationTarget(reminderID: childReminder.id, canonicalManagedID: childManagedID)
     do {
-      try ShortcutTagMutation.apply(.set(tags), to: ReminderMutationTarget(reminderID: childManagedID, canonicalManagedID: childManagedID))
+      try ShortcutTagMutation.apply(.set(tags), to: childTarget)
     } catch {
       throw RemindCoreError.operationFailed("\(failurePrefix) Child was created, but tag mutation failed. \(error.localizedDescription)")
     }
+
+    let request = ShortcutHierarchyMutationRequest(
+      operation: .attachExisting(
+        parentManagedID: parentManagedID,
+        childManagedID: childManagedID
+      )
+    )
+    do {
+      _ = try ShortcutHierarchyMutation.apply(request)
+    } catch {
+      throw RemindCoreError.operationFailed("\(failurePrefix) Child was created, but hierarchy attach failed. \(error.localizedDescription)")
+    }
+
     return childManagedID
+  }
+
+  private static func reminder(for input: String, store: RemindersStore) async throws -> ReminderItem {
+    let reminders = try await store.reminders(in: nil)
+    let resolved = try IDResolver.resolve([input], from: reminders)
+    guard let reminder = resolved.first else {
+      throw RemindCoreError.reminderNotFound(input)
+    }
+    return reminder
   }
 
   private static func mutationTarget(for input: String, store: RemindersStore) async throws -> ReminderMutationTarget {

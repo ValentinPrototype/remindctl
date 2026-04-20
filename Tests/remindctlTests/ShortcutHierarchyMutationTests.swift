@@ -15,9 +15,7 @@ struct ShortcutHierarchyMutationTests {
         child: ShortcutHierarchyChildDraft(
           managedID: childID,
           title: "Draft proposal outline",
-          notes: "Use project notes as context",
-          dueAt: "2026-04-24T09:00:00Z",
-          priority: .medium
+          notes: "Use project notes as context"
         )
       )
     )
@@ -33,8 +31,8 @@ struct ShortcutHierarchyMutationTests {
     #expect(child?["managed_id"] as? String == childID)
     #expect(child?["title"] as? String == "Draft proposal outline")
     #expect(child?["notes"] as? String == "Use project notes as context")
-    #expect(child?["due_at"] as? String == "2026-04-24T09:00:00Z")
-    #expect(child?["priority"] as? String == "medium")
+    #expect(child?["due_at"] == nil)
+    #expect(child?["priority"] == nil)
   }
 
   @Test("Encode attach-existing hierarchy mutation request")

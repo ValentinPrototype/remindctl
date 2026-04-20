@@ -17,6 +17,12 @@ struct ShortcutAssetTests {
     #expect(data.isEmpty == false)
   }
 
+  @Test("Canonical hierarchy shortcut asset exists in Support/Shortcuts")
+  func canonicalHierarchyShortcutAssetExists() throws {
+    let data = try Data(contentsOf: hierarchyShortcutURL)
+    #expect(data.isEmpty == false)
+  }
+
   @Test("Compatibility copy matches canonical search shortcut asset bytes")
   func compatibilityCopyMatchesCanonicalAsset() throws {
     let canonicalData = try Data(contentsOf: supportShortcutURL)
@@ -39,5 +45,13 @@ struct ShortcutAssetTests {
       .deletingLastPathComponent()
       .deletingLastPathComponent()
       .appendingPathComponent("remindctl - Search By Tag.shortcut")
+  }
+
+  private var hierarchyShortcutURL: URL {
+    URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .appendingPathComponent("Support/Shortcuts/remindctl - Mutate Hierarchy.shortcut")
   }
 }

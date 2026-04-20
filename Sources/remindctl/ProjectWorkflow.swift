@@ -134,13 +134,6 @@ enum ProjectWorkflow {
     )
   }
 
-  static func isoString(from date: Date?) -> String? {
-    guard let date else { return nil }
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
-    return formatter.string(from: date)
-  }
-
   static func uniqueTags(_ tags: [String]) -> [String] {
     var result: [String] = []
     var seen = Set<String>()

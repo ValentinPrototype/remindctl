@@ -19,29 +19,21 @@ struct ShortcutHierarchyChildDraft: Codable, Sendable, Equatable {
   let managedID: String
   let title: String
   let notes: String?
-  let dueAt: String?
-  let priority: ReminderPriority?
 
   init(
     managedID: String,
     title: String,
-    notes: String? = nil,
-    dueAt: String? = nil,
-    priority: ReminderPriority? = nil
+    notes: String? = nil
   ) {
     self.managedID = managedID
     self.title = title
     self.notes = notes
-    self.dueAt = dueAt
-    self.priority = priority
   }
 
   private enum CodingKeys: String, CodingKey {
     case managedID = "managed_id"
     case title
     case notes
-    case dueAt = "due_at"
-    case priority
   }
 }
 

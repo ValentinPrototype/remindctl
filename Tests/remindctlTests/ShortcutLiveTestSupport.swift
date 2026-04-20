@@ -169,7 +169,32 @@ enum ShortcutLiveTestSupport {
       stdin: input
     )
 
-    #expect(result.status == 0)
+    guard result.status == 0 else {
+      let output = (try? String(contentsOf: runFiles.outputURL, encoding: .utf8)) ?? "<missing>"
+      Issue.record(
+        """
+        Shortcut "\(name)" exited with status \(result.status)
+        stdin: \(input)
+        stdout: \(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
+        stderr: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))
+        output: \(output.trimmingCharacters(in: .whitespacesAndNewlines))
+        """
+      )
+      throw RemindCoreError.operationFailed("Shortcut \"\(name)\" exited with status \(result.status)")
+    }
+
+    guard FileManager.default.fileExists(atPath: runFiles.outputURL.path) else {
+      Issue.record(
+        """
+        Shortcut "\(name)" produced no output file
+        stdin: \(input)
+        stdout: \(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
+        stderr: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))
+        """
+      )
+      throw RemindCoreError.operationFailed("Shortcut \"\(name)\" produced no output file")
+    }
+
     return try String(contentsOf: runFiles.outputURL, encoding: .utf8)
   }
 

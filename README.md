@@ -97,6 +97,8 @@ remindctl project show 2 --all
 The helper contract is documented in
 [Support/Shortcuts/HIERARCHY_MUTATION_SHORTCUT.md](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/HIERARCHY_MUTATION_SHORTCUT.md).
 Tags are still handled by `remindctl - Mutate Tags`; the hierarchy helper only creates or attaches true subtasks.
+Project step commands currently create and tag the child while it is still top-level, then call the hierarchy helper's
+`attach_existing` operation. This keeps tag mutation reliable until `remindctl - Mutate Tags` can resolve subtasks directly.
 `project show` reads the live hierarchy through `remindctl - Search By Tag` by default. Use `--mirror` to query
 an existing mirror database instead.
 

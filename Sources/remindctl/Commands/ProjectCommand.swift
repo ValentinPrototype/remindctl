@@ -177,7 +177,7 @@ enum ProjectCommand {
     case .json:
       OutputRenderer.printProjectMutation(
         ProjectMutationSummary(
-          operation: "attach_existing",
+          operation: response.operation?.rawValue ?? "attach_existing",
           parentManagedID: parentTarget.canonicalManagedID,
           childManagedID: childTarget.canonicalManagedID,
           resolvedParentCount: response.resolvedParentCount,
@@ -384,7 +384,7 @@ enum ProjectCommand {
     case .json:
       OutputRenderer.printProjectMutation(
         ProjectMutationSummary(
-          operation: "create_child",
+          operation: result.hierarchyResponse.operation?.rawValue ?? "attach_existing",
           parentManagedID: result.hierarchyResponse.parentManagedID,
           childManagedID: result.childManagedID,
           resolvedParentCount: result.hierarchyResponse.resolvedParentCount,

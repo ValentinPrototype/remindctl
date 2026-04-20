@@ -12,6 +12,10 @@ the Shortcuts app with this exact name:
 - target reminders by the managed footer ID embedded in reminder notes
 - keep tag mutation separate in `remindctl - Mutate Tags`
 
+Current project commands create and tag new child reminders while they are still top-level reminders, then call
+`attach_existing`. The `create_child` operation remains part of the Shortcut contract, but the CLI cannot use it for
+tagged project steps until `remindctl - Mutate Tags` can resolve true subtasks by managed footer.
+
 ## Input Contract
 
 `remindctl` sends JSON on stdin.

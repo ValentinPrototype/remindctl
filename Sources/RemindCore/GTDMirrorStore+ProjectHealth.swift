@@ -143,8 +143,16 @@ public extension GTDMirrorStore {
       olderThanDays: nil,
       now: now
     )
-    let oldEmptyNotes = try queryOldIncompleteEmptyNotes(olderThanDays: olderThanDays, now: now)
-    let oldVagueTasks = try queryOldVagueIncompleteReminders(olderThanDays: olderThanDays, now: now)
+    let oldEmptyNotes = try queryOldIncompleteEmptyNotes(
+      olderThanDays: olderThanDays,
+      listTitle: listTitle,
+      now: now
+    )
+    let oldVagueTasks = try queryOldVagueIncompleteReminders(
+      olderThanDays: olderThanDays,
+      listTitle: listTitle,
+      now: now
+    )
 
     let normalizedAreaTag = areaTag?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     let queryResults = [nextActions, waitingOns, overdueActionables, oldEmptyNotes, oldVagueTasks]
@@ -244,8 +252,8 @@ private func lowestConfidence(_ confidences: [QueryConfidence]) -> QueryConfiden
 private func combinedFreshness(evaluatedAt: Date, _ freshnesses: [QueryFreshness]) -> QueryFreshness {
   QueryFreshness(
     evaluatedAt: evaluatedAt,
-    nativeSyncedAt: freshnesses.compactMap(\.nativeSyncedAt).max(),
-    shortcutGeneratedAt: freshnesses.compactMap(\.shortcutGeneratedAt).max()
+    nativeSyncedAt: freshnesses.compactMap(\.nativeSyncedAt).min(),
+    shortcutGeneratedAt: freshnesses.compactMap(\.shortcutGeneratedAt).min()
   )
 }
 

@@ -53,6 +53,71 @@ struct GTDHelperSyncTests {
     #expect(hierarchyChild?.parentSourceItemID == parent?.sourceItemID)
   }
 
+  @Test("Helper snapshot carries area tag observations without hierarchy pollution")
+  func helperSnapshotCarriesAreaTagObservations() {
+    let generatedAt = Date(timeIntervalSince1970: 1_742_472_000)
+    let project = shortcutReminder(
+      title: "Launch billing cleanup",
+      managedID: "11111111-1111-4111-8111-111111111111",
+      tags: ["active-project", "area-work"]
+    )
+    let standalone = shortcutReminder(
+      title: "Clarify standalone task",
+      managedID: "22222222-2222-4222-8222-222222222222",
+      tags: ["area-work"]
+    )
+
+    let snapshot = GTDHelperSync.helperSnapshot(
+      activeProjects: [project],
+      nextActions: [],
+      waitingOns: [],
+      areaReminders: [project, standalone],
+      generatedAt: generatedAt
+    )
+
+    #expect(snapshot.payloads.count == 4)
+    #expect(snapshot.tagObservationItems.map(\.title).contains("Clarify standalone task"))
+    let hierarchy = snapshot.payloads.first(where: { $0.contractID == .productivityHierarchy })
+    #expect(hierarchy?.items.map(\.title).contains("Clarify standalone task") == false)
+  }
+
+  @Test("Helper hierarchy refuses ambiguous title-only child matches")
+  func helperHierarchyRejectsAmbiguousTitleMatches() {
+    let generatedAt = Date(timeIntervalSince1970: 1_742_472_000)
+    let project = shortcutReminder(
+      title: "Launch billing cleanup",
+      managedID: "11111111-1111-4111-8111-111111111111",
+      tags: ["active-project", "area-work"],
+      subTasks: ["Email supplier"]
+    )
+    let otherParentChild = shortcutReminder(
+      title: "Email supplier",
+      managedID: "22222222-2222-4222-8222-222222222222",
+      tags: ["area-work", "next-action"],
+      parent: "Another project"
+    )
+    let topLevelSameTitle = shortcutReminder(
+      title: "Email supplier",
+      managedID: "33333333-3333-4333-8333-333333333333",
+      tags: ["area-work", "next-action"]
+    )
+
+    let payloads = GTDHelperSync.helperPayloads(
+      activeProjects: [project],
+      nextActions: [],
+      waitingOns: [],
+      areaReminders: [project, otherParentChild, topLevelSameTitle],
+      generatedAt: generatedAt
+    )
+
+    let hierarchy = payloads.first(where: { $0.contractID == .productivityHierarchy })
+    let parent = hierarchy?.items.first(where: { $0.title == "Launch billing cleanup" })
+    #expect(hierarchy?.items.contains(where: { $0.title == "Email supplier" }) == false)
+    #expect(parent?.childSourceItemIDs.count == 1)
+    #expect(parent?.childSourceItemIDs.first?.hasPrefix("unresolved::") == true)
+    #expect(hierarchy?.warnings.contains(where: { $0.code == "ambiguous_child_title" }) == true)
+  }
+
   private func shortcutReminder(
     title: String,
     managedID: String,

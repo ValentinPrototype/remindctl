@@ -35,6 +35,7 @@ public actor GTDMirrorStore {
   public func replaceSnapshot(
     nativeReminders: [NativeReminderRecord],
     shortcutPayloads: [ValidatedShortcutContractPayload],
+    tagObservationItems: [ShortcutContractItem] = [],
     completedAt: Date = Date(),
     allowCanonicalPromotion: Bool? = nil
   ) throws -> MirrorSyncSummary {
@@ -95,6 +96,26 @@ public actor GTDMirrorStore {
       )
     }
 
+    if resolvedAllowCanonicalPromotion {
+      for item in tagObservationItems {
+        guard let canonicalMatch = resolveCanonicalMatch(
+          for: item,
+          canonicalRecordsByManagedID: canonicalRecordsByManagedID
+        ),
+          var existingCanonicalRecord = canonicalRecordsByID[canonicalMatch.canonicalID]
+        else {
+          continue
+        }
+
+        existingCanonicalRecord = mergeTagObservationItem(
+          item,
+          into: existingCanonicalRecord,
+          semanticTimestamp: completedAt
+        )
+        canonicalRecordsByID[canonicalMatch.canonicalID] = existingCanonicalRecord
+      }
+    }
+
     let canonicalRecords = canonicalOrder.compactMap { canonicalRecordsByID[$0] }
     return try repository.replaceSnapshot(
       nativeReminders: nativeReminders,
@@ -113,6 +134,7 @@ public actor GTDMirrorStore {
   ) throws -> GTDQueryResult {
     let gateLookup = try validationGateLookup()
     let tagGate = gateLookup[.g1TagVisibility]?.state ?? .pending
+    let allowUpdatedAt = gateLookup[.g5LastModifiedReliability]?.state == .passed
     guard tagGate == .passed else {
       return GTDQueryResult(
         queryFamily: contractID.sourceQueryFamily,
@@ -187,7 +209,8 @@ public actor GTDMirrorStore {
           listTitle: listTitle,
           dueFilter: dueFilter,
           olderThanDays: olderThanDays,
-          now: now
+          now: now,
+          allowUpdatedAt: allowUpdatedAt
         )
       }
       .sorted(by: Self.queryItemLessThan)
@@ -199,6 +222,11 @@ public actor GTDMirrorStore {
       )
     } else if unresolvedItems.isEmpty == false {
       warnings.append("One or more Shortcut items could not be canonicalized and remain low-confidence.")
+    }
+    if olderThanDays != nil && !allowUpdatedAt {
+      warnings.append(
+        "\(ValidationGateID.g5LastModifiedReliability.rawValue) is not passed. Semantic stale-age logic is using created_at only."
+      )
     }
 
     let identityStatuses = distinctIdentityStatuses(in: filteredItems)
@@ -325,6 +353,7 @@ public actor GTDMirrorStore {
 
   public func queryOldIncompleteEmptyNotes(
     olderThanDays: Int = 7,
+    listTitle: String? = nil,
     now: Date = Date()
   ) throws -> GTDQueryResult {
     let gateLookup = try validationGateLookup()
@@ -350,6 +379,7 @@ public actor GTDMirrorStore {
     let items = try repository.fetchCanonicalQueryItems()
       .filter { item in
         guard item.isCompleted == false else { return false }
+        guard listTitle == nil || item.listTitle == listTitle else { return false }
         guard item.notesBody?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true else { return false }
         return isOlderThanThreshold(
           createdAt: item.createdAt,
@@ -383,6 +413,7 @@ public actor GTDMirrorStore {
 
   public func queryOldVagueIncompleteReminders(
     olderThanDays: Int = 7,
+    listTitle: String? = nil,
     now: Date = Date()
   ) throws -> GTDQueryResult {
     let gateLookup = try validationGateLookup()
@@ -408,6 +439,7 @@ public actor GTDMirrorStore {
     let items = try repository.fetchCanonicalQueryItems()
       .filter { item in
         guard item.isCompleted == false else { return false }
+        guard listTitle == nil || item.listTitle == listTitle else { return false }
         guard isOlderThanThreshold(
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
@@ -593,6 +625,48 @@ public actor GTDMirrorStore {
     )
   }
 
+  private func mergeTagObservationItem(
+    _ item: ShortcutContractItem,
+    into canonicalRecord: CanonicalReminderRecord,
+    semanticTimestamp: Date
+  ) -> CanonicalReminderRecord {
+    var observedTags = Set(canonicalRecord.observedTags)
+    observedTags.formUnion(item.observedTags ?? [])
+
+    var acquisitionSources = Set(canonicalRecord.acquisitionSources)
+    acquisitionSources.insert(AcquisitionSourceKind.shortcut.rawValue)
+
+    return CanonicalReminderRecord(
+      id: canonicalRecord.id,
+      canonicalID: canonicalRecord.canonicalID,
+      identityStatus: canonicalRecord.identityStatus,
+      sourceScopeID: canonicalRecord.sourceScopeID,
+      calendarID: canonicalRecord.calendarID,
+      listTitle: canonicalRecord.listTitle,
+      title: canonicalRecord.title,
+      noteFields: ManagedNoteFields(
+        rawNotes: canonicalRecord.rawNotes ?? item.rawNotes,
+        notesBody: canonicalRecord.notesBody,
+        canonicalManagedID: canonicalRecord.canonicalManagedID,
+        footerState: canonicalRecord.footerState
+      ),
+      isCompleted: canonicalRecord.isCompleted,
+      completionDate: canonicalRecord.completionDate,
+      priority: canonicalRecord.priority,
+      dueDate: canonicalRecord.dueDate,
+      createdAt: canonicalRecord.createdAt,
+      updatedAt: canonicalRecord.updatedAt,
+      url: canonicalRecord.url,
+      nativeCalendarItemIdentifier: canonicalRecord.nativeCalendarItemIdentifier,
+      nativeExternalIdentifier: canonicalRecord.nativeExternalIdentifier,
+      matchedSemantics: canonicalRecord.matchedSemantics,
+      observedTags: Array(observedTags).sorted(),
+      acquisitionSources: Array(acquisitionSources).sorted(),
+      lastNativeSyncAt: canonicalRecord.lastNativeSyncAt,
+      lastSemanticSyncAt: semanticTimestamp
+    )
+  }
+
   private func semanticLabel(for contractID: ShortcutContractID) -> String? {
     switch contractID {
     case .activeProjects:
@@ -627,7 +701,8 @@ public actor GTDMirrorStore {
     listTitle: String?,
     dueFilter: GTDDueFilter,
     olderThanDays: Int?,
-    now: Date
+    now: Date,
+    allowUpdatedAt: Bool
   ) -> Bool {
     if let listTitle, item.listTitle != listTitle {
       return false
@@ -639,7 +714,7 @@ public actor GTDMirrorStore {
         updatedAt: item.updatedAt,
         days: olderThanDays,
         now: now,
-        allowUpdatedAt: true
+        allowUpdatedAt: allowUpdatedAt
       ) == false
     {
       return false

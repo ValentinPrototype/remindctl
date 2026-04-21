@@ -459,14 +459,14 @@ struct GTDMirrorStoreTests {
         title: "Waiting on supplier",
         notes: managedNotes(body: "Waiting", canonicalManagedID: waitingID),
         createdAt: now.addingTimeInterval(-10 * 86_400),
-        updatedAt: now.addingTimeInterval(-8 * 86_400)
+        updatedAt: now.addingTimeInterval(-1 * 86_400)
       ),
     ]
 
     let activePayload = ValidatedShortcutContractPayload(
       contractID: .activeProjects,
       contractVersion: "v1",
-      generatedAt: now,
+      generatedAt: now.addingTimeInterval(-3 * 86_400),
       status: .ok,
       items: [
         shortcutItem(
@@ -515,7 +515,7 @@ struct GTDMirrorStoreTests {
           managedID: waitingID,
           matchedSemantics: ["waiting-on"],
           observedTags: ["area-work", "waiting-on"],
-          updatedAt: now.addingTimeInterval(-8 * 86_400),
+          updatedAt: now.addingTimeInterval(-1 * 86_400),
           now: now
         ),
       ],
@@ -570,7 +570,120 @@ struct GTDMirrorStoreTests {
     #expect(review.nextActionCount == 1)
     #expect(review.overdueActionableCount == 1)
     #expect(review.waitingOnCount == 1)
+    #expect(review.freshness.shortcutGeneratedAt == now.addingTimeInterval(-3 * 86_400))
     #expect(review.warnings.contains(where: { $0.contains("G5") }))
+
+    _ = try await store.setValidationGate(.g5LastModifiedReliability, state: .passed)
+    let reviewWithReliableUpdates = try await store.queryWeeklyReview(
+      areaTag: "area-work",
+      olderThanDays: 7,
+      waitingOnDays: 7,
+      now: now
+    )
+    #expect(reviewWithReliableUpdates.waitingOnCount == 0)
+    #expect(reviewWithReliableUpdates.warnings.contains(where: { $0.contains("G5") }) == false)
+  }
+
+  @Test("Weekly review applies list and area filters to native hygiene sections")
+  func weeklyReviewFiltersNativeHygieneByListAndObservedArea() async throws {
+    let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
+    let now = Date(timeIntervalSince1970: 1_742_472_000)
+    let workID = "77777777-7777-4777-8777-777777777777"
+    let homeID = "88888888-8888-4888-8888-888888888888"
+    let personalID = "99999999-9999-4999-8999-999999999999"
+
+    _ = try await store.setValidationGate(.g1TagVisibility, state: .passed)
+    _ = try await store.setValidationGate(.g2HierarchyVisibility, state: .passed)
+    _ = try await store.setValidationGate(.g3ShortcutIdentifier, state: .passed)
+
+    let native = [
+      sampleNativeReminder(
+        id: "native-work",
+        title: "Clarify work system",
+        notes: nil,
+        listTitle: "Work",
+        createdAt: now.addingTimeInterval(-20 * 86_400),
+        updatedAt: now.addingTimeInterval(-1 * 86_400),
+        managedID: workID
+      ),
+      sampleNativeReminder(
+        id: "native-home",
+        title: "Clarify home system",
+        notes: nil,
+        listTitle: "Work",
+        createdAt: now.addingTimeInterval(-20 * 86_400),
+        updatedAt: now.addingTimeInterval(-1 * 86_400),
+        managedID: homeID
+      ),
+      sampleNativeReminder(
+        id: "native-personal",
+        title: "Clarify personal system",
+        notes: nil,
+        listTitle: "Personal",
+        createdAt: now.addingTimeInterval(-20 * 86_400),
+        updatedAt: now.addingTimeInterval(-1 * 86_400),
+        managedID: personalID
+      ),
+    ]
+    let emptyActive = ValidatedShortcutContractPayload(
+      contractID: .activeProjects,
+      contractVersion: "v1",
+      generatedAt: now,
+      status: .empty,
+      items: [],
+      warnings: [],
+      errors: []
+    )
+    let emptyHierarchy = ValidatedShortcutContractPayload(
+      contractID: .productivityHierarchy,
+      contractVersion: "v1",
+      generatedAt: now,
+      status: .empty,
+      items: [],
+      warnings: [],
+      errors: []
+    )
+
+    _ = try await store.replaceSnapshot(
+      nativeReminders: native,
+      shortcutPayloads: [emptyActive, emptyHierarchy],
+      tagObservationItems: [
+        tagObservationItem(
+          nativeID: "native-work",
+          title: "Clarify work system",
+          managedID: workID,
+          observedTags: ["area-work"],
+          now: now
+        ),
+        tagObservationItem(
+          nativeID: "native-home",
+          title: "Clarify home system",
+          managedID: homeID,
+          observedTags: ["area-home"],
+          now: now
+        ),
+        tagObservationItem(
+          nativeID: "native-personal",
+          title: "Clarify personal system",
+          managedID: personalID,
+          observedTags: ["area-work"],
+          now: now
+        ),
+      ],
+      completedAt: now,
+      allowCanonicalPromotion: true
+    )
+
+    let review = try await store.queryWeeklyReview(
+      areaTag: "area-work",
+      listTitle: "Work",
+      olderThanDays: 7,
+      now: now
+    )
+    #expect(review.oldEmptyNoteCount == 1)
+    #expect(review.oldEmptyNotes.first?.title == "Clarify work system")
+    #expect(review.oldVagueTaskCount == 1)
+    #expect(review.oldVagueTasks.first?.title == "Clarify work system")
   }
 
   @Test("Duplicate external identifiers do not collapse into one canonical row")
@@ -651,19 +764,21 @@ struct GTDMirrorStoreTests {
     id: String,
     title: String,
     notes: String? = nil,
+    listTitle: String = "Work",
     createdAt: Date,
     updatedAt: Date,
     dueDate: Date? = nil,
-    externalIdentifier: String? = nil
+    externalIdentifier: String? = nil,
+    managedID: String? = nil
   ) -> NativeReminderRecord {
     let noteFields = ManagedNoteFields(
-      parsedNotes: CanonicalNoteFooter.normalize(rawNotes: notes)
+      parsedNotes: CanonicalNoteFooter.normalize(rawNotes: notes, canonicalManagedID: managedID)
     )
     return NativeReminderRecord(
       id: id,
       sourceScopeID: "local-source",
       calendarID: "calendar-1",
-      listTitle: "Work",
+      listTitle: listTitle,
       title: title,
       noteFields: noteFields,
       isCompleted: false,
@@ -711,6 +826,25 @@ struct GTDMirrorStoreTests {
       observedTags: observedTags,
       parentSourceItemID: parentSourceItemID,
       childSourceItemIDs: childSourceItemIDs
+    )
+  }
+
+  private func tagObservationItem(
+    nativeID: String,
+    title: String,
+    managedID: String,
+    observedTags: [String],
+    now: Date
+  ) -> ShortcutContractItem {
+    shortcutItem(
+      sourceItemID: "tag-observation-\(nativeID)",
+      nativeID: nativeID,
+      title: title,
+      managedID: managedID,
+      matchedSemantics: [],
+      observedTags: observedTags,
+      updatedAt: now.addingTimeInterval(-1 * 86_400),
+      now: now
     )
   }
 

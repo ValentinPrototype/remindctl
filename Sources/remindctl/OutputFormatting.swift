@@ -129,6 +129,19 @@ enum OutputRenderer {
     }
   }
 
+  static func printProjectHealth(_ summary: ProjectHealthSummary, format: OutputFormat) {
+    switch format {
+    case .standard:
+      printLines(renderProjectHealthStandard(summary))
+    case .plain:
+      printLines(renderProjectHealthPlain(summary))
+    case .json:
+      printJSON(summary)
+    case .quiet:
+      Swift.print(summary.needsAttentionCount)
+    }
+  }
+
   static func printAuthorizationStatus(_ status: RemindersAuthorizationStatus, format: OutputFormat) {
     switch format {
     case .standard:
@@ -278,6 +291,41 @@ enum OutputRenderer {
     let projectLine = projectHierarchyPlainLine(kind: "project", reminder: summary.project)
     let childLines = summary.children.map { projectHierarchyPlainLine(kind: "child", reminder: $0) }
     return [projectLine] + childLines
+  }
+
+  static func renderProjectHealthStandard(_ summary: ProjectHealthSummary) -> [String] {
+    var lines = [
+      "Project health [\(summary.source)] projects=\(summary.projectCount) healthy=\(summary.healthyCount) needs_next_action=\(summary.needsNextActionCount) needs_cleanup=\(summary.needsCleanupCount)"
+    ]
+    if summary.projects.isEmpty {
+      lines.append("No active projects found")
+      return lines
+    }
+
+    for project in summary.projects {
+      let area = project.areaTags.isEmpty ? "area=missing" : "area=\(project.areaTags.joined(separator: ","))"
+      let issues = project.issues.isEmpty ? "none" : project.issues.map(\.rawValue).joined(separator: ",")
+      lines.append(
+        "[\(project.status.rawValue)] \(project.title) [\(area)] children=\(project.childCount) resolved=\(project.resolvedChildCount) next=\(project.nextActionCount) waiting=\(project.waitingOnCount) issues=\(issues)"
+      )
+    }
+    return lines
+  }
+
+  static func renderProjectHealthPlain(_ summary: ProjectHealthSummary) -> [String] {
+    summary.projects.map { project in
+      [
+        project.status.rawValue,
+        project.managedID ?? "",
+        project.areaTags.joined(separator: ","),
+        "\(project.childCount)",
+        "\(project.resolvedChildCount)",
+        "\(project.nextActionCount)",
+        "\(project.waitingOnCount)",
+        project.issues.map(\.rawValue).joined(separator: ","),
+        project.title,
+      ].joined(separator: "\t")
+    }
   }
 
   private static func renderRemindersStandard<T: ReminderDisplayItem>(_ reminders: [T]) -> [String] {

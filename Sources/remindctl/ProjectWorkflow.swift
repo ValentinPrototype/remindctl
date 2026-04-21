@@ -81,6 +81,10 @@ enum ProjectWorkflow {
     uniqueTags([status.tag, areaTag])
   }
 
+  static func areaTags(in tags: [String]) -> [String] {
+    tags.filter { $0.hasPrefix("area-") }
+  }
+
   static func childTags(
     areaTag: String,
     kind: ProjectStepKind,
@@ -113,6 +117,23 @@ enum ProjectWorkflow {
   }
 
   static func findAreaTag(forParentManagedID parentManagedID: String) throws -> String {
+    var semanticMatches: [String] = []
+    for statusTag in ["active-project", "someday/maybe"] {
+      let reminders = try ShortcutTagSearch.search(tags: [statusTag])
+      for reminder in reminders where reminder.canonicalManagedID == parentManagedID {
+        semanticMatches.append(contentsOf: areaTags(in: reminder.tags))
+      }
+    }
+    semanticMatches = uniqueTags(semanticMatches)
+    if semanticMatches.count == 1, let match = semanticMatches.first {
+      return match
+    }
+    if semanticMatches.count > 1 {
+      throw RemindCoreError.operationFailed(
+        "Parent project has multiple area tags: \(semanticMatches.joined(separator: ", "))"
+      )
+    }
+
     var matches: [String] = []
     for areaTag in knownAreaTags {
       let reminders = try ShortcutTagSearch.search(tags: [areaTag])

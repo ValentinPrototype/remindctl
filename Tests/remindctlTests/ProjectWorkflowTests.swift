@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 
+@testable import RemindCore
 @testable import remindctl
 
 struct ProjectWorkflowTests {
@@ -8,6 +9,7 @@ struct ProjectWorkflowTests {
   func normalizeWorkflowTags() throws {
     #expect(try ProjectWorkflow.normalizeAreaTag("work") == "area-work")
     #expect(try ProjectWorkflow.normalizeAreaTag("#area-personal") == "area-personal")
+    #expect(ProjectWorkflow.areaTags(in: ["active-project", "area-custom", "next-action"]) == ["area-custom"])
     #expect(try ProjectWorkflow.normalizeContextTag("phone-call") == "c-phone-call")
     #expect(try ProjectWorkflow.normalizeContextTag("c-computer") == "c-computer")
     #expect(try ProjectWorkflow.normalizeEnergyTag("low") == "e-low")
@@ -118,5 +120,135 @@ struct ProjectWorkflowTests {
     #expect(invocation.parsedValues.option("context") == "messenger")
     #expect(invocation.parsedValues.option("energy") == "low")
     #expect(invocation.parsedValues.option("due") == "tomorrow")
+  }
+
+  @Test("Project health command parses area and output options")
+  func projectHealthCommandParsesOptions() throws {
+    let invocation = try CommandRouter().program.resolve(
+      argv: [
+        "remindctl",
+        "project",
+        "health",
+        "--area",
+        "work",
+        "--json",
+      ]
+    )
+
+    #expect(invocation.parsedValues.positional == ["health"])
+    #expect(invocation.parsedValues.option("area") == "work")
+    #expect(invocation.parsedValues.flag("jsonOutput"))
+  }
+
+  @Test("Project health marks projects with next actions as healthy")
+  func projectHealthMarksHealthyProjects() {
+    let project = shortcutReminder(
+      title: "Ship v1",
+      tags: ["active-project", "area-work"],
+      subTasks: ["Draft release notes"]
+    )
+    let child = shortcutReminder(
+      title: "Draft release notes",
+      tags: ["area-work", "next-action"],
+      parent: "Ship v1"
+    )
+
+    let summary = ProjectHealth.evaluate(
+      source: "test",
+      projects: [ProjectHealthInput(project: project, areaTags: ["area-work"], children: [child])]
+    )
+
+    #expect(summary.projectCount == 1)
+    #expect(summary.healthyCount == 1)
+    #expect(summary.projects.first?.status == .healthy)
+    #expect(summary.projects.first?.issues == [])
+    #expect(summary.projects.first?.nextActionCount == 1)
+  }
+
+  @Test("Project health flags projects with no open children")
+  func projectHealthFlagsNoOpenChildren() {
+    let project = shortcutReminder(
+      title: "Empty project",
+      tags: ["active-project", "area-work"]
+    )
+
+    let summary = ProjectHealth.evaluate(
+      source: "test",
+      projects: [ProjectHealthInput(project: project, areaTags: ["area-work"], children: [])]
+    )
+
+    let health = summary.projects.first
+    #expect(health?.status == .needsNextAction)
+    #expect(health?.issues.contains(.noOpenChildren) == true)
+    #expect(health?.issues.contains(.missingNextAction) == true)
+  }
+
+  @Test("Project health flags unresolved child details")
+  func projectHealthFlagsUnresolvedChildDetails() {
+    let project = shortcutReminder(
+      title: "Partially visible project",
+      tags: ["active-project", "area-work"],
+      subTasks: ["Invisible child"]
+    )
+
+    let summary = ProjectHealth.evaluate(
+      source: "test",
+      projects: [ProjectHealthInput(project: project, areaTags: ["area-work"], children: [])]
+    )
+
+    let health = summary.projects.first
+    #expect(health?.childCount == 1)
+    #expect(health?.resolvedChildCount == 0)
+    #expect(health?.unresolvedChildTitles == ["Invisible child"])
+    #expect(health?.issues.contains(.unresolvedChildDetails) == true)
+  }
+
+  @Test("Project health flags unclassified children")
+  func projectHealthFlagsUnclassifiedChildren() {
+    let project = shortcutReminder(
+      title: "Ambiguous project",
+      tags: ["active-project", "area-work"],
+      subTasks: ["Think about launch"]
+    )
+    let child = shortcutReminder(
+      title: "Think about launch",
+      tags: ["area-work"],
+      parent: "Ambiguous project"
+    )
+
+    let summary = ProjectHealth.evaluate(
+      source: "test",
+      projects: [ProjectHealthInput(project: project, areaTags: ["area-work"], children: [child])]
+    )
+
+    let health = summary.projects.first
+    #expect(health?.unclassifiedChildCount == 1)
+    #expect(health?.issues.contains(.unclassifiedChildren) == true)
+    #expect(health?.issues.contains(.missingNextAction) == true)
+  }
+
+  private func shortcutReminder(
+    title: String,
+    tags: [String],
+    subTasks: [String] = [],
+    parent: String? = nil,
+    isCompleted: Bool = false
+  ) -> ShortcutTagReminder {
+    ShortcutTagReminder(
+      id: UUID().uuidString,
+      title: title,
+      notes: nil,
+      canonicalManagedID: UUID().uuidString,
+      isCompleted: isCompleted,
+      completedAt: nil,
+      priority: .none,
+      dueAt: nil,
+      listName: "Projects",
+      tags: tags,
+      subTasks: subTasks,
+      parent: parent,
+      createdAt: nil,
+      updatedAt: nil
+    )
   }
 }

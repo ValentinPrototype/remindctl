@@ -214,6 +214,59 @@ struct ProjectCommandLiveE2ETests {
     }
   }
 
+  @Test("Project health reports a live project with a next action as healthy")
+  func projectHealthReportsLiveHealthyProject() async throws {
+    guard Self.shouldRunProjectE2ETests else { return }
+
+    let runID = UUID().uuidString
+    let projectTitle = "Codex Project Health \(runID)"
+    let stepTitle = "Codex Project Health Step \(runID)"
+
+    try await withCleanup(titleFragments: [projectTitle, stepTitle]) { cleanup in
+      let createResult = try await ShortcutLiveTestSupport.runRemindctl([
+        "project",
+        "create",
+        projectTitle,
+        "--area",
+        "work",
+        "--json",
+        "--no-input",
+      ])
+      try requireSuccess(createResult, context: "project create")
+      let project = try decodeReminderJSON(createResult.stdout)
+      cleanup.ids.insert(project.id)
+
+      let addStepResult = try await ShortcutLiveTestSupport.runRemindctl([
+        "project",
+        "add-step",
+        project.id,
+        stepTitle,
+        "--kind",
+        "next-action",
+        "--json",
+        "--no-input",
+      ])
+      try requireSuccess(addStepResult, context: "project add-step")
+
+      let healthResult = try await ShortcutLiveTestSupport.runRemindctl([
+        "project",
+        "health",
+        "--area",
+        "work",
+        "--json",
+        "--no-input",
+      ])
+      try requireSuccess(healthResult, context: "project health")
+
+      let summary = try decodeProjectHealthJSON(healthResult.stdout)
+      let health = try #require(summary.projects.first(where: { $0.title == projectTitle }))
+      #expect(health.status == "healthy")
+      #expect(health.nextActionCount == 1)
+      #expect(health.resolvedChildCount == 1)
+      #expect(health.issues.isEmpty)
+    }
+  }
+
 
   private static var shouldRunProjectE2ETests: Bool {
     ProcessInfo.processInfo.environment["REMINDCTL_RUN_PROJECT_E2E_TESTS"] == "1"
@@ -312,6 +365,17 @@ struct ProjectCommandLiveE2ETests {
     )
   }
 
+  private func decodeProjectHealthJSON(_ rawJSON: String) throws -> ProjectE2EHealthSummary {
+    let object = try JSONSerialization.jsonObject(with: Data(rawJSON.utf8))
+    guard let dictionary = object as? [String: Any],
+      let projects = dictionary["projects"] as? [[String: Any]]
+    else {
+      throw testError("Unexpected project health JSON output: \(rawJSON)")
+    }
+
+    return ProjectE2EHealthSummary(projects: projects.compactMap(ProjectE2EHealthProject.init))
+  }
+
   private func requireSuccess(_ result: CapturedCommandResult, context: String) throws {
     guard result.exitCode == 0 else {
       throw testError(
@@ -369,6 +433,32 @@ private struct ProjectE2EHierarchyChild {
     }
     self.title = title
     self.tags = json["tags"] as? [String] ?? []
+  }
+}
+
+private struct ProjectE2EHealthSummary {
+  let projects: [ProjectE2EHealthProject]
+}
+
+private struct ProjectE2EHealthProject {
+  let title: String
+  let status: String
+  let nextActionCount: Int
+  let resolvedChildCount: Int
+  let issues: [String]
+
+  init?(json: [String: Any]) {
+    guard let title = json["title"] as? String,
+      let status = json["status"] as? String
+    else {
+      return nil
+    }
+
+    self.title = title
+    self.status = status
+    self.nextActionCount = json["next_action_count"] as? Int ?? 0
+    self.resolvedChildCount = json["resolved_child_count"] as? Int ?? 0
+    self.issues = json["issues"] as? [String] ?? []
   }
 }
 

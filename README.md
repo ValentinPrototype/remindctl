@@ -92,6 +92,7 @@ remindctl project create "Ship v1" --area work --step "Draft release notes"
 remindctl project add-step 2 "Email supplier" --kind next-action --context messenger --energy low
 remindctl project attach 4 --to 2
 remindctl project show 2 --all
+remindctl project health --area work
 ```
 
 The helper contract is documented in
@@ -100,6 +101,9 @@ Tags are still handled by `remindctl - Mutate Tags`; the hierarchy helper only c
 Project step commands call the hierarchy helper's `create_child` operation, then apply tags and native metadata.
 `project show` reads the live hierarchy through `remindctl - Search By Tag` by default. Use `--mirror` to query
 an existing mirror database instead.
+`project health` currently uses the same live Shortcut-backed data path and reports active projects with no open
+children, no next-action child, unclassified children, missing area tags, or child titles whose details could not
+be resolved through area-tag lookup.
 
 Live hierarchy Shortcut coverage is opt-in:
 
@@ -145,6 +149,7 @@ remindctl project create "Ship v1" --area work --step "Draft release notes"
 remindctl project add-step 2 "Email supplier" --kind next-action --context messenger --energy low
 remindctl project attach 4 --to 2
 remindctl project show 2 --all
+remindctl project health --area work
 remindctl complete 1 2 3
 remindctl delete 4A83 --force
 remindctl status                # permission status

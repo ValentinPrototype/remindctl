@@ -11,7 +11,7 @@ enum ProjectCommand {
       signature: CommandSignatures.withRuntimeFlags(
         CommandSignature(
           arguments: [
-            .make(label: "action", help: "create|add-step|attach|show"),
+            .make(label: "action", help: "create|add-step|attach|show|health"),
             .make(label: "id-or-title", help: "Project title, project ID, or task ID", isOptional: true),
             .make(label: "title", help: "Step title for add-step", isOptional: true),
           ],
@@ -41,6 +41,7 @@ enum ProjectCommand {
         "remindctl project add-step 2 \"Email supplier\" --kind next-action --context messenger --energy low",
         "remindctl project attach 4 --to 2",
         "remindctl project show 2 --all",
+        "remindctl project health --area work",
       ]
     ) { values, runtime in
       let action = try values.argument(0).unwrap(or: ParsedValuesError.missingArgument("action"))
@@ -56,8 +57,10 @@ enum ProjectCommand {
         try await attachTask(values: values, runtime: runtime)
       case "show":
         try await showProject(values: values, runtime: runtime)
+      case "health":
+        try projectHealth(values: values, runtime: runtime)
       default:
-        throw RemindCoreError.operationFailed("Unknown project action: \(action) (use create|add-step|attach|show)")
+        throw RemindCoreError.operationFailed("Unknown project action: \(action) (use create|add-step|attach|show|health)")
       }
     }
   }
@@ -288,6 +291,91 @@ enum ProjectCommand {
       ),
       format: format
     )
+  }
+
+  private static func projectHealth(values: ParsedValues, runtime: RuntimeOptions) throws {
+    if values.option("mirror") != nil {
+      throw RemindCoreError.operationFailed(
+        "project health currently uses live Shortcuts data. Mirror-backed health is not implemented yet."
+      )
+    }
+    if values.flag("all") || values.flag("completed") {
+      throw RemindCoreError.operationFailed(
+        "project health evaluates open active projects only; --all and --completed are not supported."
+      )
+    }
+
+    let areaFilter = try values.option("area").map(ProjectWorkflow.normalizeAreaTag)
+    let listFilter = values.option("list")
+    let activeProjects = try ShortcutTagSearch.search(tags: ["active-project"])
+      .filter { project in
+        if let listFilter, project.listName != listFilter {
+          return false
+        }
+        if let areaFilter, !project.tags.contains(areaFilter) {
+          return false
+        }
+        return true
+      }
+
+    let requiredAreaTags = Set(
+      activeProjects.flatMap { project in
+        let areaTags = ProjectHealth.areaTags(in: project.tags)
+        if let areaFilter, areaTags.isEmpty {
+          return [areaFilter]
+        }
+        return areaTags
+      }
+    )
+    var areaRemindersByTag: [String: [ShortcutTagReminder]] = [:]
+    for areaTag in requiredAreaTags.sorted() {
+      let reminders = try ShortcutTagSearch.search(tags: [areaTag])
+      areaRemindersByTag[areaTag] = if let listFilter {
+        reminders.filter { $0.listName == listFilter }
+      } else {
+        reminders
+      }
+    }
+
+    let inputs = activeProjects.map { project in
+      let areaTags = ProjectHealth.areaTags(in: project.tags)
+      let lookupAreaTags = areaTags.isEmpty ? areaFilter.map { [$0] } ?? [] : areaTags
+      let children = liveChildReminders(
+        for: project,
+        in: lookupAreaTags.flatMap { areaRemindersByTag[$0] ?? [] }
+      )
+      return ProjectHealthInput(project: project, areaTags: areaTags, children: children)
+    }
+
+    OutputRenderer.printProjectHealth(
+      ProjectHealth.evaluate(source: "live-shortcut", projects: inputs),
+      format: runtime.outputFormat
+    )
+  }
+
+  private static func liveChildReminders(
+    for project: ShortcutTagReminder,
+    in candidates: [ShortcutTagReminder]
+  ) -> [ShortcutTagReminder] {
+    let childTitleSet = Set(project.subTasks)
+    var seenKeys = Set<String>()
+    var children: [ShortcutTagReminder] = []
+
+    for reminder in candidates {
+      guard reminder.canonicalManagedID != project.canonicalManagedID,
+        reminder.parent == project.title || childTitleSet.contains(reminder.title)
+      else {
+        continue
+      }
+      let key = reminder.canonicalManagedID ?? reminder.id ?? "\(reminder.listName):\(reminder.title)"
+      if seenKeys.insert(key).inserted {
+        children.append(reminder)
+      }
+    }
+
+    return children.sorted { lhs, rhs in
+      lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
   }
 
   private static func createChild(

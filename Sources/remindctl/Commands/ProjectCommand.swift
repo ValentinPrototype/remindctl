@@ -302,36 +302,52 @@ enum ProjectCommand {
     failurePrefix: String
   ) async throws -> ProjectChildCreationResult {
     let childManagedID = CanonicalNoteFooter.generateCanonicalManagedID()
-    let childNotes = CanonicalNoteFooter.render(notesBody: notes, canonicalManagedID: childManagedID)
-
-    let childReminder: ReminderItem
-    do {
-      childReminder = try await store.createReminder(
-        ReminderDraft(title: title, notes: childNotes, dueDate: dueDate, priority: priority),
-        listName: listName
-      )
-    } catch {
-      throw RemindCoreError.operationFailed("\(failurePrefix) Native child creation failed. \(error.localizedDescription)")
-    }
-
-    let childTarget = ReminderMutationTarget(reminderID: childReminder.id, canonicalManagedID: childManagedID)
-    do {
-      try ShortcutTagMutation.apply(.set(tags), to: childTarget)
-    } catch {
-      throw RemindCoreError.operationFailed("\(failurePrefix) Child was created, but tag mutation failed. \(error.localizedDescription)")
-    }
-
     let request = ShortcutHierarchyMutationRequest(
-      operation: .attachExisting(
+      operation: .createChild(
         parentManagedID: parentManagedID,
-        childManagedID: childManagedID
+        child: ShortcutHierarchyChildDraft(
+          managedID: childManagedID,
+          title: title,
+          notes: notes
+        )
       )
     )
     let response: ShortcutHierarchyMutationResponse
     do {
       response = try ShortcutHierarchyMutation.apply(request)
     } catch {
-      throw RemindCoreError.operationFailed("\(failurePrefix) Child was created, but hierarchy attach failed. \(error.localizedDescription)")
+      throw RemindCoreError.operationFailed("\(failurePrefix) Hierarchy child creation failed. \(error.localizedDescription)")
+    }
+
+    if dueDate != nil || priority != .none {
+      let childNativeTarget = try await mutationTarget(
+        forManagedID: childManagedID,
+        listName: listName,
+        store: store
+      )
+      var dueDateUpdate: Date??
+      if let dueDate {
+        dueDateUpdate = .some(dueDate)
+      }
+
+      do {
+        _ = try await store.updateReminder(
+          id: childNativeTarget.reminderID,
+          update: ReminderUpdate(
+            dueDate: dueDateUpdate,
+            priority: priority == .none ? nil : priority
+          )
+        )
+      } catch {
+        throw RemindCoreError.operationFailed("\(failurePrefix) Child was created, but native metadata update failed. \(error.localizedDescription)")
+      }
+    }
+
+    let childTarget = ReminderMutationTarget(reminderID: childManagedID, canonicalManagedID: childManagedID)
+    do {
+      try ShortcutTagMutation.apply(.set(tags), to: childTarget)
+    } catch {
+      throw RemindCoreError.operationFailed("\(failurePrefix) Child was created, but tag mutation failed. \(error.localizedDescription)")
     }
 
     return ProjectChildCreationResult(
@@ -356,6 +372,34 @@ enum ProjectCommand {
       throw RemindCoreError.reminderNotFound(input)
     }
     return try await store.mutationTarget(forReminderID: reminder.id)
+  }
+
+  private static func mutationTarget(
+    forManagedID managedID: String,
+    listName: String,
+    store: RemindersStore
+  ) async throws -> ReminderMutationTarget {
+    let maxAttempts = 12
+    for attempt in 1...maxAttempts {
+      let reminders = try await store.nativeReminders(in: listName)
+      let matches = reminders.filter { $0.canonicalManagedID == managedID }
+      if matches.count == 1, let reminder = matches.first {
+        return ReminderMutationTarget(
+          reminderID: reminder.nativeCalendarItemIdentifier,
+          canonicalManagedID: managedID
+        )
+      }
+      if matches.count > 1 {
+        throw RemindCoreError.operationFailed(
+          "Expected exactly one reminder with managed ID \(managedID), found \(matches.count)"
+        )
+      }
+      if attempt < maxAttempts {
+        try await Task.sleep(nanoseconds: 250_000_000)
+      }
+    }
+
+    throw RemindCoreError.operationFailed("Expected exactly one reminder with managed ID \(managedID), found 0")
   }
 
   private static func resolveTargetList(_ listName: String?, store: RemindersStore) async throws -> String {
@@ -384,7 +428,7 @@ enum ProjectCommand {
     case .json:
       OutputRenderer.printProjectMutation(
         ProjectMutationSummary(
-          operation: result.hierarchyResponse.operation?.rawValue ?? "attach_existing",
+          operation: result.hierarchyResponse.operation?.rawValue ?? "create_child",
           parentManagedID: result.hierarchyResponse.parentManagedID,
           childManagedID: result.childManagedID,
           resolvedParentCount: result.hierarchyResponse.resolvedParentCount,

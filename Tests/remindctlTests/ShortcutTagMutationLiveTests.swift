@@ -207,6 +207,60 @@ struct ShortcutTagMutationLiveTests {
     }
   }
 
+  @Test("Installed mutate shortcut tags a parent reminder that has a true subtask")
+  func mutateTagsCanTargetHierarchyParent() async throws {
+    guard Self.shouldRunLiveTests else { return }
+
+    let parentTag = uniqueTag(prefix: "codex-live-parent-mutated")
+
+    try await withAttachedChild { parent, child in
+      let response = try ShortcutLiveTestSupport.runMutationShortcut(
+        request: ShortcutTagMutationRequest(
+          targetManagedID: parent.managedID,
+          operation: .add([parentTag])
+        )
+      )
+      try requireSuccessfulMutation(response, target: "parent", parent: parent, child: child)
+      let appliedTags = try #require(response.appliedTags)
+
+      #expect(response.operation == .add)
+      #expect(response.managedID == parent.managedID)
+      #expect(response.resolvedReminderCount == 1)
+      #expect(appliedTags.contains(parentTag))
+
+      let tagSearch = try ShortcutLiveTestSupport.runSearchShortcut(tags: [parentTag])
+      #expect(tagSearch.data.contains(where: { $0.title == parent.title }))
+      #expect(tagSearch.data.contains(where: { $0.title == child.title }) == false)
+    }
+  }
+
+  @Test("Installed mutate shortcut tags a true subtask by managed id")
+  func mutateTagsCanTargetTrueSubtask() async throws {
+    guard Self.shouldRunLiveTests else { return }
+
+    let childTag = uniqueTag(prefix: "codex-live-subtask-mutated")
+
+    try await withAttachedChild { parent, child in
+      let response = try ShortcutLiveTestSupport.runMutationShortcut(
+        request: ShortcutTagMutationRequest(
+          targetManagedID: child.managedID,
+          operation: .add([childTag])
+        )
+      )
+      try requireSuccessfulMutation(response, target: "child", parent: parent, child: child)
+      let appliedTags = try #require(response.appliedTags)
+
+      #expect(response.operation == .add)
+      #expect(response.managedID == child.managedID)
+      #expect(response.resolvedReminderCount == 1)
+      #expect(appliedTags.contains(childTag))
+
+      let tagSearch = try ShortcutLiveTestSupport.runSearchShortcut(tags: [childTag])
+      let taggedChild = try #require(tagSearch.data.first(where: { $0.title == child.title }))
+      #expect(taggedChild.parent == parent.title)
+    }
+  }
+
   @Test("Installed mutate shortcut fails duplicate reminder matches")
   func duplicateMatchReturnsCountTwo() async throws {
     guard Self.shouldRunLiveTests else { return }
@@ -237,5 +291,50 @@ struct ShortcutTagMutationLiveTests {
 
   private func uniqueTag(prefix: String) -> String {
     "\(prefix)-\(UUID().uuidString.prefix(8))".lowercased()
+  }
+
+  private func withAttachedChild(
+    body: (ManagedReminderFixture, ManagedReminderFixture) throws -> Void
+  ) async throws {
+    try await ShortcutLiveTestSupport.withManagedReminders(
+      seeds: [
+        ManagedReminderSeed(titlePrefix: "Codex Live Mutate Parent", tags: []),
+        ManagedReminderSeed(titlePrefix: "Codex Live Mutate Subtask", tags: []),
+      ]
+    ) { fixtures in
+      let parent = try #require(fixtures.first)
+      let child = try #require(fixtures.dropFirst().first)
+      let request = ShortcutHierarchyMutationRequest(
+        operation: .attachExisting(parentManagedID: parent.managedID, childManagedID: child.managedID)
+      )
+      let response = try ShortcutLiveTestSupport.runHierarchyShortcut(request: request)
+      try ShortcutHierarchyMutation.validateSuccessfulResponse(response, for: request)
+
+      try body(parent, child)
+    }
+  }
+
+  private func requireSuccessfulMutation(
+    _ response: ShortcutTagMutationResponse,
+    target: String,
+    parent: ManagedReminderFixture,
+    child: ManagedReminderFixture
+  ) throws {
+    guard response.success else {
+      Issue.record(
+        """
+        Mutate Tags failed for \(target)
+        parent_managed_id: \(parent.managedID)
+        child_managed_id: \(child.managedID)
+        resolved_reminder_count: \(response.resolvedReminderCount.map(String.init) ?? "<nil>")
+        error_message: \(response.errorMessage ?? "<nil>")
+        """
+      )
+      throw NSError(
+        domain: "ShortcutTagMutationLiveTests",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: response.errorMessage ?? "Mutate Tags failed for \(target)"]
+      )
+    }
   }
 }

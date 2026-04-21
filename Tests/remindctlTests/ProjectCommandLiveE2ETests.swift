@@ -87,7 +87,7 @@ struct ProjectCommandLiveE2ETests {
       try requireSuccess(addStepResult, context: "project add-step")
 
       let mutation = try decodeProjectMutationJSON(addStepResult.stdout)
-      #expect(mutation.operation == "attach_existing")
+      #expect(mutation.operation == "create_child")
       #expect(mutation.childManagedID.isEmpty == false)
       #expect(mutation.resolvedParentCount == 1)
       #expect(mutation.resolvedChildCount == 1)

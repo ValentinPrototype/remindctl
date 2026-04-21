@@ -23,6 +23,12 @@ struct ShortcutAssetTests {
     #expect(data.isEmpty == false)
   }
 
+  @Test("Canonical mutate tags shortcut asset exists in Support/Shortcuts")
+  func canonicalMutateTagsShortcutAssetExists() throws {
+    let data = try Data(contentsOf: tagMutationShortcutURL)
+    #expect(data.isEmpty == false)
+  }
+
   @Test("Compatibility copy matches canonical search shortcut asset bytes")
   func compatibilityCopyMatchesCanonicalAsset() throws {
     let canonicalData = try Data(contentsOf: supportShortcutURL)
@@ -53,5 +59,13 @@ struct ShortcutAssetTests {
       .deletingLastPathComponent()
       .deletingLastPathComponent()
       .appendingPathComponent("Support/Shortcuts/remindctl - Mutate Hierarchy.shortcut")
+  }
+
+  private var tagMutationShortcutURL: URL {
+    URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .appendingPathComponent("Support/Shortcuts/remindctl - Mutate Tags.shortcut")
   }
 }

@@ -142,6 +142,24 @@ enum OutputRenderer {
     }
   }
 
+  static func printWeeklyReview(_ summary: WeeklyReviewSummary, format: OutputFormat) {
+    switch format {
+    case .standard:
+      printLines(renderWeeklyReviewStandard(summary))
+    case .plain:
+      printLines(renderWeeklyReviewPlain(summary))
+    case .json:
+      printJSON(summary)
+    case .quiet:
+      Swift.print(
+        summary.projectHealth.needsAttentionCount
+          + summary.overdueActionableCount
+          + summary.waitingOnCount
+          + summary.oldVagueTaskCount
+      )
+    }
+  }
+
   static func printAuthorizationStatus(_ status: RemindersAuthorizationStatus, format: OutputFormat) {
     switch format {
     case .standard:
@@ -295,8 +313,9 @@ enum OutputRenderer {
 
   static func renderProjectHealthStandard(_ summary: ProjectHealthSummary) -> [String] {
     var lines = [
-      "Project health [\(summary.source)] projects=\(summary.projectCount) healthy=\(summary.healthyCount) needs_next_action=\(summary.needsNextActionCount) needs_cleanup=\(summary.needsCleanupCount)"
+      "Project health [\(summary.source)] status=\(summary.status.rawValue) confidence=\(summary.confidence.rawValue) projects=\(summary.projectCount) healthy=\(summary.healthyCount) needs_next_action=\(summary.needsNextActionCount) needs_cleanup=\(summary.needsCleanupCount)"
     ]
+    lines.append(contentsOf: summary.warnings.map { "Warning: \($0)" })
     if summary.projects.isEmpty {
       lines.append("No active projects found")
       return lines
@@ -326,6 +345,37 @@ enum OutputRenderer {
         project.title,
       ].joined(separator: "\t")
     }
+  }
+
+  static func renderWeeklyReviewStandard(_ summary: WeeklyReviewSummary) -> [String] {
+    var lines = [
+      "Weekly review status=\(summary.status.rawValue) confidence=\(summary.confidence.rawValue)",
+      "Projects: \(summary.projectHealth.projectCount) total, \(summary.projectHealth.needsAttentionCount) need attention, \(summary.projectHealth.needsNextActionCount) missing next action",
+      "Next actions: \(summary.nextActionCount)",
+      "Waiting-ons needing follow-up: \(summary.waitingOnCount)",
+      "Overdue actionables: \(summary.overdueActionableCount)",
+      "Old vague tasks: \(summary.oldVagueTaskCount)",
+      "Old empty-note tasks: \(summary.oldEmptyNoteCount)",
+    ]
+    lines.append(contentsOf: summary.warnings.map { "Warning: \($0)" })
+    return lines
+  }
+
+  static func renderWeeklyReviewPlain(_ summary: WeeklyReviewSummary) -> [String] {
+    [
+      [
+        "summary",
+        summary.status.rawValue,
+        summary.confidence.rawValue,
+        "\(summary.projectHealth.projectCount)",
+        "\(summary.projectHealth.needsAttentionCount)",
+        "\(summary.nextActionCount)",
+        "\(summary.waitingOnCount)",
+        "\(summary.overdueActionableCount)",
+        "\(summary.oldVagueTaskCount)",
+        "\(summary.oldEmptyNoteCount)",
+      ].joined(separator: "\t"),
+    ]
   }
 
   private static func renderRemindersStandard<T: ReminderDisplayItem>(_ reminders: [T]) -> [String] {

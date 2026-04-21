@@ -28,11 +28,12 @@ enum ProjectCommand {
             .make(label: "notes", names: [.short("n"), .long("notes")], help: "Notes for a child step", parsing: .singleValue),
             .make(label: "priority", names: [.short("p"), .long("priority")], help: "none|low|medium|high", parsing: .singleValue),
             .make(label: "to", names: [.long("to")], help: "Project ID for attach", parsing: .singleValue),
-            .make(label: "mirror", names: [.long("mirror")], help: "Path to the mirror SQLite database for project show", parsing: .singleValue),
+            .make(label: "mirror", names: [.long("mirror")], help: "Path to the mirror SQLite database for project show or health", parsing: .singleValue),
           ],
           flags: [
             .make(label: "all", names: [.long("all")], help: "Show completed and incomplete hierarchy items"),
             .make(label: "completed", names: [.long("completed")], help: "Show completed hierarchy items only"),
+            .make(label: "sync", names: [.long("sync")], help: "Refresh the GTD mirror before reading project health"),
           ]
         )
       ),
@@ -58,7 +59,7 @@ enum ProjectCommand {
       case "show":
         try await showProject(values: values, runtime: runtime)
       case "health":
-        try projectHealth(values: values, runtime: runtime)
+        try await projectHealth(values: values, runtime: runtime)
       default:
         throw RemindCoreError.operationFailed("Unknown project action: \(action) (use create|add-step|attach|show|health)")
       }
@@ -293,12 +294,7 @@ enum ProjectCommand {
     )
   }
 
-  private static func projectHealth(values: ParsedValues, runtime: RuntimeOptions) throws {
-    if values.option("mirror") != nil {
-      throw RemindCoreError.operationFailed(
-        "project health currently uses live Shortcuts data. Mirror-backed health is not implemented yet."
-      )
-    }
+  private static func projectHealth(values: ParsedValues, runtime: RuntimeOptions) async throws {
     if values.flag("all") || values.flag("completed") {
       throw RemindCoreError.operationFailed(
         "project health evaluates open active projects only; --all and --completed are not supported."
@@ -307,75 +303,24 @@ enum ProjectCommand {
 
     let areaFilter = try values.option("area").map(ProjectWorkflow.normalizeAreaTag)
     let listFilter = values.option("list")
-    let activeProjects = try ShortcutTagSearch.search(tags: ["active-project"])
-      .filter { project in
-        if let listFilter, project.listName != listFilter {
-          return false
-        }
-        if let areaFilter, !project.tags.contains(areaFilter) {
-          return false
-        }
-        return true
-      }
-
-    let requiredAreaTags = Set(
-      activeProjects.flatMap { project in
-        let areaTags = ProjectHealth.areaTags(in: project.tags)
-        if let areaFilter, areaTags.isEmpty {
-          return [areaFilter]
-        }
-        return areaTags
-      }
-    )
-    var areaRemindersByTag: [String: [ShortcutTagReminder]] = [:]
-    for areaTag in requiredAreaTags.sorted() {
-      let reminders = try ShortcutTagSearch.search(tags: [areaTag])
-      areaRemindersByTag[areaTag] = if let listFilter {
-        reminders.filter { $0.listName == listFilter }
-      } else {
-        reminders
-      }
+    let mirrorURL = if let mirrorPath = values.option("mirror") {
+      URL(fileURLWithPath: mirrorPath)
+    } else {
+      try MirrorPaths.defaultDatabaseURL()
     }
 
-    let inputs = activeProjects.map { project in
-      let areaTags = ProjectHealth.areaTags(in: project.tags)
-      let lookupAreaTags = areaTags.isEmpty ? areaFilter.map { [$0] } ?? [] : areaTags
-      let children = liveChildReminders(
-        for: project,
-        in: lookupAreaTags.flatMap { areaRemindersByTag[$0] ?? [] }
-      )
-      return ProjectHealthInput(project: project, areaTags: areaTags, children: children)
+    if values.flag("sync") {
+      _ = try await GTDHelperSync.sync(mirrorURL: mirrorURL)
     }
 
+    let mirror = try GTDMirrorStore(databaseURL: mirrorURL)
     OutputRenderer.printProjectHealth(
-      ProjectHealth.evaluate(source: "live-shortcut", projects: inputs),
+      try await mirror.queryProjectHealth(
+        areaTag: areaFilter,
+        listTitle: listFilter
+      ),
       format: runtime.outputFormat
     )
-  }
-
-  private static func liveChildReminders(
-    for project: ShortcutTagReminder,
-    in candidates: [ShortcutTagReminder]
-  ) -> [ShortcutTagReminder] {
-    let childTitleSet = Set(project.subTasks)
-    var seenKeys = Set<String>()
-    var children: [ShortcutTagReminder] = []
-
-    for reminder in candidates {
-      guard reminder.canonicalManagedID != project.canonicalManagedID,
-        reminder.parent == project.title || childTitleSet.contains(reminder.title)
-      else {
-        continue
-      }
-      let key = reminder.canonicalManagedID ?? reminder.id ?? "\(reminder.listName):\(reminder.title)"
-      if seenKeys.insert(key).inserted {
-        children.append(reminder)
-      }
-    }
-
-    return children.sorted { lhs, rhs in
-      lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-    }
   }
 
   private static func createChild(

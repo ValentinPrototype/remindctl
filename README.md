@@ -92,7 +92,9 @@ remindctl project create "Ship v1" --area work --step "Draft release notes"
 remindctl project add-step 2 "Email supplier" --kind next-action --context messenger --energy low
 remindctl project attach 4 --to 2
 remindctl project show 2 --all
+remindctl sync --gtd
 remindctl project health --area work
+remindctl review weekly
 ```
 
 The helper contract is documented in
@@ -101,9 +103,13 @@ Tags are still handled by `remindctl - Mutate Tags`; the hierarchy helper only c
 Project step commands call the hierarchy helper's `create_child` operation, then apply tags and native metadata.
 `project show` reads the live hierarchy through `remindctl - Search By Tag` by default. Use `--mirror` to query
 an existing mirror database instead.
-`project health` currently uses the same live Shortcut-backed data path and reports active projects with no open
-children, no next-action child, unclassified children, missing area tags, or child titles whose details could not
-be resolved through area-tag lookup.
+`sync --gtd` refreshes the local GTD mirror using native Reminders plus the installed `remindctl - Search By Tag`
+helper. It populates active-project, next-action, waiting-on, and hierarchy data for review-style reads.
+`project health` reads the mirror by default. Use `project health --sync` to refresh first. It reports active
+projects with no open children, no next-action child, unclassified children, missing area tags, or unresolved child
+details.
+`review weekly` reads the same mirror and returns a compact weekly review snapshot with project health, next
+actions, waiting-ons, overdue actionables, and stale/vague candidates.
 
 Live hierarchy Shortcut coverage is opt-in:
 
@@ -149,7 +155,10 @@ remindctl project create "Ship v1" --area work --step "Draft release notes"
 remindctl project add-step 2 "Email supplier" --kind next-action --context messenger --energy low
 remindctl project attach 4 --to 2
 remindctl project show 2 --all
+remindctl sync --gtd
 remindctl project health --area work
+remindctl project health --sync --area work
+remindctl review weekly --sync
 remindctl complete 1 2 3
 remindctl delete 4A83 --force
 remindctl status                # permission status

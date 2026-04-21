@@ -18,6 +18,7 @@ struct CommandRouter {
       CompleteCommand.spec,
       DeleteCommand.spec,
       ProjectCommand.spec,
+      ReviewCommand.spec,
       GateCommand.spec,
       SyncCommand.spec,
       QueryCommand.spec,

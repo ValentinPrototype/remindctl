@@ -7,7 +7,7 @@ enum SyncCommand {
     CommandSpec(
       name: "sync",
       abstract: "Sync native reminders and optional Shortcut contracts into the GTD mirror",
-      discussion: "By default syncs native EventKit data only. Add --all-contracts or --contract to ingest semantic Shortcut payloads.",
+      discussion: "By default syncs native EventKit data only. Add --gtd for review-ready GTD semantics, or --all-contracts/--contract for formal Shortcut payloads.",
       signature: CommandSignatures.withRuntimeFlags(
         CommandSignature(
           options: [
@@ -32,6 +32,11 @@ enum SyncCommand {
           ],
           flags: [
             .make(
+              label: "gtd",
+              names: [.long("gtd")],
+              help: "Sync native reminders plus helper-derived GTD semantic and hierarchy data"
+            ),
+            .make(
               label: "allContracts",
               names: [.long("all-contracts")],
               help: "Sync all required v1 Shortcut contracts"
@@ -41,6 +46,7 @@ enum SyncCommand {
       ),
       usageExamples: [
         "remindctl sync",
+        "remindctl sync --gtd",
         "remindctl sync --all-contracts",
         "remindctl sync --fixtures-dir ./fixtures",
         "remindctl sync --contract active-projects next-actions --fixtures-dir ./fixtures",
@@ -51,6 +57,15 @@ enum SyncCommand {
       } else {
         try MirrorPaths.defaultDatabaseURL()
       }
+      if values.flag("gtd") {
+        if values.flag("allContracts") || values.optionValues("contract").isEmpty == false || values.option("fixturesDir") != nil {
+          throw RemindCoreError.operationFailed("Use either --gtd or formal contract sync flags, not both.")
+        }
+        let summary = try await GTDHelperSync.sync(mirrorURL: mirrorURL)
+        OutputRenderer.printMirrorSyncSummary(summary, format: runtime.outputFormat)
+        return
+      }
+
       let fixturesDirectory = values.option("fixturesDir").map { URL(fileURLWithPath: $0) }
       let selectedContracts = try resolveContracts(
         tokens: values.optionValues("contract"),

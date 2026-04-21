@@ -129,6 +129,7 @@ struct ProjectWorkflowTests {
         "remindctl",
         "project",
         "health",
+        "--sync",
         "--area",
         "work",
         "--json",
@@ -137,6 +138,53 @@ struct ProjectWorkflowTests {
 
     #expect(invocation.parsedValues.positional == ["health"])
     #expect(invocation.parsedValues.option("area") == "work")
+    #expect(invocation.parsedValues.flag("sync"))
+    #expect(invocation.parsedValues.flag("jsonOutput"))
+  }
+
+  @Test("Sync gtd command parses")
+  func syncGTDCommandParses() throws {
+    let invocation = try CommandRouter().program.resolve(
+      argv: [
+        "remindctl",
+        "sync",
+        "--gtd",
+        "--mirror",
+        "/tmp/remindctl-test.sqlite3",
+        "--json",
+      ]
+    )
+
+    #expect(invocation.path == ["remindctl", "sync"])
+    #expect(invocation.parsedValues.flag("gtd"))
+    #expect(invocation.parsedValues.option("mirror") == "/tmp/remindctl-test.sqlite3")
+    #expect(invocation.parsedValues.flag("jsonOutput"))
+  }
+
+  @Test("Review weekly command parses")
+  func reviewWeeklyCommandParses() throws {
+    let invocation = try CommandRouter().program.resolve(
+      argv: [
+        "remindctl",
+        "review",
+        "weekly",
+        "--sync",
+        "--area",
+        "work",
+        "--older-than-days",
+        "14",
+        "--waiting-on-days",
+        "7",
+        "--json",
+      ]
+    )
+
+    #expect(invocation.path == ["remindctl", "review"])
+    #expect(invocation.parsedValues.positional == ["weekly"])
+    #expect(invocation.parsedValues.flag("sync"))
+    #expect(invocation.parsedValues.option("area") == "work")
+    #expect(invocation.parsedValues.option("olderThanDays") == "14")
+    #expect(invocation.parsedValues.option("waitingOnDays") == "7")
     #expect(invocation.parsedValues.flag("jsonOutput"))
   }
 
@@ -233,22 +281,21 @@ struct ProjectWorkflowTests {
     subTasks: [String] = [],
     parent: String? = nil,
     isCompleted: Bool = false
-  ) -> ShortcutTagReminder {
-    ShortcutTagReminder(
+  ) -> ProjectHealthReminder {
+    ProjectHealthReminder(
       id: UUID().uuidString,
+      sourceItemID: UUID().uuidString,
+      canonicalID: UUID().uuidString,
+      managedID: UUID().uuidString,
       title: title,
-      notes: nil,
-      canonicalManagedID: UUID().uuidString,
+      listName: "Projects",
       isCompleted: isCompleted,
-      completedAt: nil,
       priority: .none,
       dueAt: nil,
-      listName: "Projects",
-      tags: tags,
-      subTasks: subTasks,
-      parent: parent,
       createdAt: nil,
-      updatedAt: nil
+      updatedAt: nil,
+      tags: tags,
+      childTitles: subTasks
     )
   }
 }

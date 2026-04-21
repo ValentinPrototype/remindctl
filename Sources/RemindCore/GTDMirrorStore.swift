@@ -35,10 +35,11 @@ public actor GTDMirrorStore {
   public func replaceSnapshot(
     nativeReminders: [NativeReminderRecord],
     shortcutPayloads: [ValidatedShortcutContractPayload],
-    completedAt: Date = Date()
+    completedAt: Date = Date(),
+    allowCanonicalPromotion: Bool? = nil
   ) throws -> MirrorSyncSummary {
     let gateStates = try validationGateStateLookup()
-    let allowCanonicalPromotion = gateStates[.g3ShortcutIdentifier] == .passed
+    let resolvedAllowCanonicalPromotion = allowCanonicalPromotion ?? (gateStates[.g3ShortcutIdentifier] == .passed)
 
     var canonicalRecordsByID: [String: CanonicalReminderRecord] = [:]
     var canonicalOrder: [String] = []
@@ -75,8 +76,10 @@ public actor GTDMirrorStore {
         lastNativeSyncAt: completedAt,
         lastSemanticSyncAt: nil
       )
+      if canonicalRecordsByID[canonicalRecord.canonicalID] == nil {
+        canonicalOrder.append(canonicalRecord.canonicalID)
+      }
       canonicalRecordsByID[canonicalRecord.canonicalID] = canonicalRecord
-      canonicalOrder.append(canonicalRecord.canonicalID)
       if let canonicalManagedID = reminder.canonicalManagedID {
         canonicalRecordsByManagedID[canonicalManagedID] = canonicalRecord
       }
@@ -88,7 +91,7 @@ public actor GTDMirrorStore {
         canonicalRecordsByManagedID: canonicalRecordsByManagedID,
         canonicalRecordsByID: &canonicalRecordsByID,
         snapshotTimestamp: completedAt,
-        allowCanonicalPromotion: allowCanonicalPromotion
+        allowCanonicalPromotion: resolvedAllowCanonicalPromotion
       )
     }
 

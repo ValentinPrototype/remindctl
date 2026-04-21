@@ -221,6 +221,12 @@ struct ProjectCommandLiveE2ETests {
     let runID = UUID().uuidString
     let projectTitle = "Codex Project Health \(runID)"
     let stepTitle = "Codex Project Health Step \(runID)"
+    let mirrorURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "remindctl-project-health-\(runID).sqlite3"
+    )
+    defer {
+      try? FileManager.default.removeItem(at: mirrorURL)
+    }
 
     try await withCleanup(titleFragments: [projectTitle, stepTitle]) { cleanup in
       let createResult = try await ShortcutLiveTestSupport.runRemindctl([
@@ -251,6 +257,9 @@ struct ProjectCommandLiveE2ETests {
       let healthResult = try await ShortcutLiveTestSupport.runRemindctl([
         "project",
         "health",
+        "--sync",
+        "--mirror",
+        mirrorURL.path,
         "--area",
         "work",
         "--json",
@@ -264,6 +273,22 @@ struct ProjectCommandLiveE2ETests {
       #expect(health.nextActionCount == 1)
       #expect(health.resolvedChildCount == 1)
       #expect(health.issues.isEmpty)
+
+      let reviewResult = try await ShortcutLiveTestSupport.runRemindctl([
+        "review",
+        "weekly",
+        "--mirror",
+        mirrorURL.path,
+        "--area",
+        "work",
+        "--json",
+        "--no-input",
+      ])
+      try requireSuccess(reviewResult, context: "review weekly")
+
+      let review = try decodeWeeklyReviewJSON(reviewResult.stdout)
+      #expect(review.projectTitles.contains(projectTitle))
+      #expect(review.nextActionTitles.contains(stepTitle))
     }
   }
 
@@ -376,6 +401,22 @@ struct ProjectCommandLiveE2ETests {
     return ProjectE2EHealthSummary(projects: projects.compactMap(ProjectE2EHealthProject.init))
   }
 
+  private func decodeWeeklyReviewJSON(_ rawJSON: String) throws -> ProjectE2EWeeklyReview {
+    let object = try JSONSerialization.jsonObject(with: Data(rawJSON.utf8))
+    guard let dictionary = object as? [String: Any],
+      let projectHealth = dictionary["project_health"] as? [String: Any],
+      let projects = projectHealth["projects"] as? [[String: Any]],
+      let nextActions = dictionary["next_actions"] as? [[String: Any]]
+    else {
+      throw testError("Unexpected weekly review JSON output: \(rawJSON)")
+    }
+
+    return ProjectE2EWeeklyReview(
+      projectTitles: projects.compactMap { $0["title"] as? String },
+      nextActionTitles: nextActions.compactMap { $0["title"] as? String }
+    )
+  }
+
   private func requireSuccess(_ result: CapturedCommandResult, context: String) throws {
     guard result.exitCode == 0 else {
       throw testError(
@@ -460,6 +501,11 @@ private struct ProjectE2EHealthProject {
     self.resolvedChildCount = json["resolved_child_count"] as? Int ?? 0
     self.issues = json["issues"] as? [String] ?? []
   }
+}
+
+private struct ProjectE2EWeeklyReview {
+  let projectTitles: [String]
+  let nextActionTitles: [String]
 }
 
 private struct ProjectE2EReminder {

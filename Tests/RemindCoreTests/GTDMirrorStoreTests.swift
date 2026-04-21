@@ -152,6 +152,58 @@ struct GTDMirrorStoreTests {
     #expect(result.items.first?.matchedSemantics == ["active-project"])
   }
 
+  @Test("Explicit canonical promotion supports first helper-derived sync")
+  func explicitCanonicalPromotionSupportsFirstHelperSync() async throws {
+    let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
+    let now = Date(timeIntervalSince1970: 1_742_472_000)
+    let managedID = "77777777-7777-4777-8777-777777777777"
+
+    _ = try await store.setValidationGate(.g1TagVisibility, state: .passed)
+
+    let native = [
+      sampleNativeReminder(
+        id: "native-helper-project",
+        title: "Helper project",
+        notes: managedNotes(body: "Helper project", canonicalManagedID: managedID),
+        createdAt: now.addingTimeInterval(-4 * 86_400),
+        updatedAt: now.addingTimeInterval(-86_400)
+      )
+    ]
+    let payload = ValidatedShortcutContractPayload(
+      contractID: .activeProjects,
+      contractVersion: "v1",
+      generatedAt: now,
+      status: .ok,
+      items: [
+        shortcutItem(
+          sourceItemID: "active-helper-project",
+          nativeID: "native-helper-project",
+          title: "Helper project",
+          managedID: managedID,
+          matchedSemantics: ["active-project"],
+          observedTags: ["active-project", "area-work"],
+          now: now
+        ),
+      ],
+      warnings: [],
+      errors: []
+    )
+
+    _ = try await store.replaceSnapshot(
+      nativeReminders: native,
+      shortcutPayloads: [payload],
+      completedAt: now,
+      allowCanonicalPromotion: true
+    )
+    _ = try await store.setValidationGate(.g3ShortcutIdentifier, state: .passed)
+
+    let result = try await store.querySemantic(contractID: .activeProjects, now: now)
+    #expect(result.confidence == .medium)
+    #expect(result.items.count == 1)
+    #expect(result.items.first?.identityStatus == .canonicalManaged)
+    #expect(result.items.first?.matchedSemantics == ["active-project"])
+  }
+
   @Test("Hierarchy query requires the hierarchy gate and returns parent-child edges")
   func hierarchyQueryUsesHierarchyContract() async throws {
     let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
@@ -252,6 +304,275 @@ struct GTDMirrorStoreTests {
     #expect(result.items.first(where: { $0.sourceItemID == "shortcut-child" })?.parentSourceItemID == "shortcut-parent")
   }
 
+  @Test("Mirror-backed project health joins active projects and hierarchy")
+  func projectHealthJoinsSemanticAndHierarchyData() async throws {
+    let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
+    let now = Date(timeIntervalSince1970: 1_742_472_000)
+    let healthyProjectID = "11111111-1111-4111-8111-111111111111"
+    let childID = "22222222-2222-4222-8222-222222222222"
+    let emptyProjectID = "33333333-3333-4333-8333-333333333333"
+
+    _ = try await store.setValidationGate(.g1TagVisibility, state: .passed)
+    _ = try await store.setValidationGate(.g2HierarchyVisibility, state: .passed)
+    _ = try await store.setValidationGate(.g3ShortcutIdentifier, state: .passed)
+
+    let native = [
+      sampleNativeReminder(
+        id: "native-healthy-project",
+        title: "Healthy project",
+        notes: managedNotes(body: "Project", canonicalManagedID: healthyProjectID),
+        createdAt: now.addingTimeInterval(-10 * 86_400),
+        updatedAt: now.addingTimeInterval(-2 * 86_400)
+      ),
+      sampleNativeReminder(
+        id: "native-child",
+        title: "Do concrete thing",
+        notes: managedNotes(body: "Child", canonicalManagedID: childID),
+        createdAt: now.addingTimeInterval(-9 * 86_400),
+        updatedAt: now.addingTimeInterval(-1 * 86_400)
+      ),
+      sampleNativeReminder(
+        id: "native-empty-project",
+        title: "Empty project",
+        notes: managedNotes(body: "Empty", canonicalManagedID: emptyProjectID),
+        createdAt: now.addingTimeInterval(-8 * 86_400),
+        updatedAt: now.addingTimeInterval(-1 * 86_400)
+      ),
+    ]
+
+    let activePayload = ValidatedShortcutContractPayload(
+      contractID: .activeProjects,
+      contractVersion: "v1",
+      generatedAt: now,
+      status: .ok,
+      items: [
+        shortcutItem(
+          sourceItemID: "active-healthy",
+          nativeID: "native-healthy-project",
+          title: "Healthy project",
+          managedID: healthyProjectID,
+          matchedSemantics: ["active-project"],
+          observedTags: ["active-project", "area-work"],
+          now: now
+        ),
+        shortcutItem(
+          sourceItemID: "active-empty",
+          nativeID: "native-empty-project",
+          title: "Empty project",
+          managedID: emptyProjectID,
+          matchedSemantics: ["active-project"],
+          observedTags: ["active-project", "area-work"],
+          now: now
+        ),
+      ],
+      warnings: [],
+      errors: []
+    )
+    let hierarchyPayload = ValidatedShortcutContractPayload(
+      contractID: .productivityHierarchy,
+      contractVersion: "v1",
+      generatedAt: now,
+      status: .ok,
+      items: [
+        shortcutItem(
+          sourceItemID: "hierarchy-healthy",
+          nativeID: "native-healthy-project",
+          title: "Healthy project",
+          managedID: healthyProjectID,
+          matchedSemantics: [],
+          observedTags: ["active-project", "area-work"],
+          childSourceItemIDs: ["hierarchy-child"],
+          now: now
+        ),
+        shortcutItem(
+          sourceItemID: "hierarchy-child",
+          nativeID: "native-child",
+          title: "Do concrete thing",
+          managedID: childID,
+          matchedSemantics: [],
+          observedTags: ["area-work", "next-action"],
+          parentSourceItemID: "hierarchy-healthy",
+          now: now
+        ),
+        shortcutItem(
+          sourceItemID: "hierarchy-empty",
+          nativeID: "native-empty-project",
+          title: "Empty project",
+          managedID: emptyProjectID,
+          matchedSemantics: [],
+          observedTags: ["active-project", "area-work"],
+          now: now
+        ),
+      ],
+      warnings: [],
+      errors: []
+    )
+
+    _ = try await store.replaceSnapshot(
+      nativeReminders: native,
+      shortcutPayloads: [activePayload, hierarchyPayload],
+      completedAt: now
+    )
+
+    let result = try await store.queryProjectHealth(areaTag: "area-work", now: now)
+    #expect(result.status == .ok)
+    #expect(result.projectCount == 2)
+    #expect(result.healthyCount == 1)
+    let healthy = try #require(result.projects.first(where: { $0.title == "Healthy project" }))
+    #expect(healthy.status == .healthy)
+    #expect(healthy.nextActionCount == 1)
+    let empty = try #require(result.projects.first(where: { $0.title == "Empty project" }))
+    #expect(empty.status == .needsNextAction)
+    #expect(empty.issues.contains(.noOpenChildren))
+  }
+
+  @Test("Weekly review composes mirror-backed sections")
+  func weeklyReviewComposesMirrorData() async throws {
+    let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
+    let now = Date(timeIntervalSince1970: 1_742_472_000)
+    let projectID = "44444444-4444-4444-8444-444444444444"
+    let nextID = "55555555-5555-4555-8555-555555555555"
+    let waitingID = "66666666-6666-4666-8666-666666666666"
+
+    _ = try await store.setValidationGate(.g1TagVisibility, state: .passed)
+    _ = try await store.setValidationGate(.g2HierarchyVisibility, state: .passed)
+    _ = try await store.setValidationGate(.g3ShortcutIdentifier, state: .passed)
+
+    let native = [
+      sampleNativeReminder(
+        id: "native-project",
+        title: "Weekly project",
+        notes: managedNotes(body: "Project", canonicalManagedID: projectID),
+        createdAt: now.addingTimeInterval(-20 * 86_400),
+        updatedAt: now.addingTimeInterval(-2 * 86_400)
+      ),
+      sampleNativeReminder(
+        id: "native-next",
+        title: "Do next thing",
+        notes: managedNotes(body: "Next", canonicalManagedID: nextID),
+        createdAt: now.addingTimeInterval(-10 * 86_400),
+        updatedAt: now.addingTimeInterval(-8 * 86_400),
+        dueDate: now.addingTimeInterval(-86_400)
+      ),
+      sampleNativeReminder(
+        id: "native-waiting",
+        title: "Waiting on supplier",
+        notes: managedNotes(body: "Waiting", canonicalManagedID: waitingID),
+        createdAt: now.addingTimeInterval(-10 * 86_400),
+        updatedAt: now.addingTimeInterval(-8 * 86_400)
+      ),
+    ]
+
+    let activePayload = ValidatedShortcutContractPayload(
+      contractID: .activeProjects,
+      contractVersion: "v1",
+      generatedAt: now,
+      status: .ok,
+      items: [
+        shortcutItem(
+          sourceItemID: "active-project",
+          nativeID: "native-project",
+          title: "Weekly project",
+          managedID: projectID,
+          matchedSemantics: ["active-project"],
+          observedTags: ["active-project", "area-work"],
+          now: now
+        ),
+      ],
+      warnings: [],
+      errors: []
+    )
+    let nextPayload = ValidatedShortcutContractPayload(
+      contractID: .nextActions,
+      contractVersion: "v1",
+      generatedAt: now,
+      status: .ok,
+      items: [
+        shortcutItem(
+          sourceItemID: "next-action",
+          nativeID: "native-next",
+          title: "Do next thing",
+          managedID: nextID,
+          matchedSemantics: ["next-action"],
+          observedTags: ["area-work", "next-action"],
+          dueAt: now.addingTimeInterval(-86_400),
+          now: now
+        ),
+      ],
+      warnings: [],
+      errors: []
+    )
+    let waitingPayload = ValidatedShortcutContractPayload(
+      contractID: .waitingOns,
+      contractVersion: "v1",
+      generatedAt: now,
+      status: .ok,
+      items: [
+        shortcutItem(
+          sourceItemID: "waiting-on",
+          nativeID: "native-waiting",
+          title: "Waiting on supplier",
+          managedID: waitingID,
+          matchedSemantics: ["waiting-on"],
+          observedTags: ["area-work", "waiting-on"],
+          updatedAt: now.addingTimeInterval(-8 * 86_400),
+          now: now
+        ),
+      ],
+      warnings: [],
+      errors: []
+    )
+    let hierarchyPayload = ValidatedShortcutContractPayload(
+      contractID: .productivityHierarchy,
+      contractVersion: "v1",
+      generatedAt: now,
+      status: .ok,
+      items: [
+        shortcutItem(
+          sourceItemID: "hierarchy-project",
+          nativeID: "native-project",
+          title: "Weekly project",
+          managedID: projectID,
+          matchedSemantics: [],
+          observedTags: ["active-project", "area-work"],
+          childSourceItemIDs: ["hierarchy-next"],
+          now: now
+        ),
+        shortcutItem(
+          sourceItemID: "hierarchy-next",
+          nativeID: "native-next",
+          title: "Do next thing",
+          managedID: nextID,
+          matchedSemantics: [],
+          observedTags: ["area-work", "next-action"],
+          parentSourceItemID: "hierarchy-project",
+          now: now
+        ),
+      ],
+      warnings: [],
+      errors: []
+    )
+
+    _ = try await store.replaceSnapshot(
+      nativeReminders: native,
+      shortcutPayloads: [activePayload, nextPayload, waitingPayload, hierarchyPayload],
+      completedAt: now
+    )
+
+    let review = try await store.queryWeeklyReview(
+      areaTag: "area-work",
+      olderThanDays: 7,
+      waitingOnDays: 7,
+      now: now
+    )
+    #expect(review.status == .ok)
+    #expect(review.projectHealth.healthyCount == 1)
+    #expect(review.nextActionCount == 1)
+    #expect(review.overdueActionableCount == 1)
+    #expect(review.waitingOnCount == 1)
+    #expect(review.warnings.contains(where: { $0.contains("G5") }))
+  }
+
   @Test("Duplicate external identifiers do not collapse into one canonical row")
   func duplicateExternalIdentifiersRemainCollisionUnresolved() async throws {
     let store = try GTDMirrorStore(databaseURL: temporaryDatabaseURL())
@@ -332,6 +653,7 @@ struct GTDMirrorStoreTests {
     notes: String? = nil,
     createdAt: Date,
     updatedAt: Date,
+    dueDate: Date? = nil,
     externalIdentifier: String? = nil
   ) -> NativeReminderRecord {
     let noteFields = ManagedNoteFields(
@@ -347,12 +669,48 @@ struct GTDMirrorStoreTests {
       isCompleted: false,
       completionDate: nil,
       priority: .medium,
-      dueDate: nil,
+      dueDate: dueDate,
       createdAt: createdAt,
       updatedAt: updatedAt,
       url: nil,
       nativeCalendarItemIdentifier: id,
       nativeExternalIdentifier: externalIdentifier ?? "external-\(id)"
+    )
+  }
+
+  private func shortcutItem(
+    sourceItemID: String,
+    nativeID: String,
+    title: String,
+    managedID: String,
+    matchedSemantics: [String],
+    observedTags: [String],
+    dueAt: Date? = nil,
+    updatedAt: Date? = nil,
+    parentSourceItemID: String? = nil,
+    childSourceItemIDs: [String] = [],
+    now: Date
+  ) -> ShortcutContractItem {
+    ShortcutContractItem(
+      sourceItemID: sourceItemID,
+      nativeCalendarItemIdentifier: nativeID,
+      nativeExternalIdentifier: nil,
+      title: title,
+      rawNotes: managedNotes(body: title, canonicalManagedID: managedID),
+      notes: title,
+      canonicalManagedID: managedID,
+      footerState: .valid,
+      listTitle: "Work",
+      isCompleted: false,
+      priority: .medium,
+      dueAt: dueAt,
+      createdAt: now.addingTimeInterval(-10 * 86_400),
+      updatedAt: updatedAt ?? now.addingTimeInterval(-2 * 86_400),
+      url: nil,
+      matchedSemantics: matchedSemantics,
+      observedTags: observedTags,
+      parentSourceItemID: parentSourceItemID,
+      childSourceItemIDs: childSourceItemIDs
     )
   }
 

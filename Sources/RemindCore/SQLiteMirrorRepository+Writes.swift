@@ -7,11 +7,15 @@ extension SQLiteMirrorRepository {
     resolvedShortcutPayloads: [ResolvedShortcutPayload],
     completedAt: Date
   ) throws -> MirrorSyncSummary {
-    let canonicalByNativeIdentifier = Dictionary(
-      uniqueKeysWithValues: canonicalRecords.compactMap { record in
-        record.nativeCalendarItemIdentifier.map { ($0, record) }
+    var canonicalByNativeIdentifier: [String: CanonicalReminderRecord] = [:]
+    for record in canonicalRecords {
+      guard let nativeIdentifier = record.nativeCalendarItemIdentifier,
+        canonicalByNativeIdentifier[nativeIdentifier] == nil
+      else {
+        continue
       }
-    )
+      canonicalByNativeIdentifier[nativeIdentifier] = record
+    }
 
     try connection.execute("BEGIN IMMEDIATE TRANSACTION")
     do {
@@ -318,9 +322,15 @@ extension SQLiteMirrorRepository {
     _ resolvedItems: [ResolvedShortcutItem],
     insertedAt: Date
   ) throws {
-    let canonicalLookup = Dictionary(uniqueKeysWithValues: resolvedItems.map {
-      ($0.item.sourceItemID, $0.record.canonicalID)
-    })
+    var canonicalLookup: [String: String] = [:]
+    for resolvedItem in resolvedItems {
+      guard let canonicalID = resolvedItem.record.canonicalID,
+        canonicalLookup[resolvedItem.item.sourceItemID] == nil
+      else {
+        continue
+      }
+      canonicalLookup[resolvedItem.item.sourceItemID] = canonicalID
+    }
 
     for resolvedItem in resolvedItems {
       for childSourceItemID in resolvedItem.item.childSourceItemIDs {
@@ -336,8 +346,8 @@ extension SQLiteMirrorRepository {
         try statement.bind(resolvedItem.contractID.rawValue, at: 1)
         try statement.bind(resolvedItem.item.sourceItemID, at: 2)
         try statement.bind(childSourceItemID, at: 3)
-        try statement.bind(canonicalLookup[resolvedItem.item.sourceItemID] ?? nil, at: 4)
-        try statement.bind(canonicalLookup[childSourceItemID] ?? nil, at: 5)
+        try statement.bind(canonicalLookup[resolvedItem.item.sourceItemID], at: 4)
+        try statement.bind(canonicalLookup[childSourceItemID], at: 5)
         try statement.bind(insertedAt, at: 6)
         _ = try statement.step()
       }

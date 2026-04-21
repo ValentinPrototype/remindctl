@@ -158,16 +158,31 @@ enum ShortcutLiveTestSupport {
       try? FileManager.default.removeItem(at: runFiles.directoryURL)
     }
 
-    let result = try ProcessExecutor.run(
-      executableURL: URL(fileURLWithPath: "/usr/bin/shortcuts"),
-      arguments: [
-        "run",
-        name,
-        "--output-path",
-        runFiles.outputURL.path,
-      ],
-      stdin: input
-    )
+    let result: ProcessResult
+    do {
+      result = try ProcessExecutor.run(
+        executableURL: URL(fileURLWithPath: "/usr/bin/shortcuts"),
+        arguments: [
+          "run",
+          name,
+          "--output-path",
+          runFiles.outputURL.path,
+        ],
+        stdin: input,
+        timeout: timeout(for: name)
+      )
+    } catch let error as ProcessExecutionError {
+      throw ShortcutProcessErrorFormatter.timeout(
+        shortcutName: name,
+        category: category(for: name),
+        timeout: timeout(for: name),
+        outputURL: runFiles.outputURL,
+        underlyingError: error,
+        installGuidance: installGuidance(for: name)
+      )
+    } catch {
+      throw error
+    }
 
     guard result.status == 0 else {
       let output = (try? String(contentsOf: runFiles.outputURL, encoding: .utf8)) ?? "<missing>"
@@ -180,7 +195,14 @@ enum ShortcutLiveTestSupport {
         output: \(output.trimmingCharacters(in: .whitespacesAndNewlines))
         """
       )
-      throw RemindCoreError.operationFailed("Shortcut \"\(name)\" exited with status \(result.status)")
+      throw ShortcutProcessErrorFormatter.processFailure(
+        shortcutName: name,
+        category: category(for: name),
+        result: result,
+        outputURL: runFiles.outputURL,
+        missingShortcutGuidance: "Shortcut \"\(name)\" is required for live Shortcut tests. \(installGuidance(for: name))",
+        installGuidance: installGuidance(for: name)
+      )
     }
 
     guard FileManager.default.fileExists(atPath: runFiles.outputURL.path) else {
@@ -192,10 +214,52 @@ enum ShortcutLiveTestSupport {
         stderr: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))
         """
       )
-      throw RemindCoreError.operationFailed("Shortcut \"\(name)\" produced no output file")
+      throw ShortcutProcessErrorFormatter.noOutputFile(
+        shortcutName: name,
+        category: category(for: name),
+        outputURL: runFiles.outputURL,
+        installGuidance: installGuidance(for: name)
+      )
     }
 
     return try String(contentsOf: runFiles.outputURL, encoding: .utf8)
+  }
+
+  private static func timeout(for shortcutName: String) -> TimeInterval {
+    switch shortcutName {
+    case ShortcutTagSearch.shortcutName:
+      return ShortcutTagSearch.timeout
+    case ShortcutTagMutation.shortcutName:
+      return ShortcutTagMutation.timeout
+    case ShortcutHierarchyMutation.shortcutName:
+      return ShortcutHierarchyMutation.timeout
+    default:
+      return 60
+    }
+  }
+
+  private static func category(for shortcutName: String) -> String {
+    switch shortcutName {
+    case ShortcutTagSearch.shortcutName:
+      return "search"
+    case ShortcutTagMutation.shortcutName:
+      return "tag mutation"
+    case ShortcutHierarchyMutation.shortcutName:
+      return "hierarchy mutation"
+    default:
+      return "Shortcut execution"
+    }
+  }
+
+  private static func installGuidance(for shortcutName: String) -> String {
+    switch shortcutName {
+    case ShortcutTagMutation.shortcutName:
+      return "Install the tag mutation helper and see the README."
+    case ShortcutHierarchyMutation.shortcutName:
+      return "Install the hierarchy mutation helper and see the README."
+    default:
+      return "Reinstall the bundled .shortcut file and see the README."
+    }
   }
 
   private static func decodeJSONObject(_ rawOutput: String) throws -> [String: Any] {

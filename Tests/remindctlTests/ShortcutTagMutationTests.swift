@@ -209,6 +209,32 @@ struct ShortcutTagMutationTests {
     #expect(ShortcutTagSearch.shortcutName == "remindctl - Search By Tag")
   }
 
+  @Test("Shortcut timeout errors include mutation context")
+  func timeoutErrorIncludesMutationContext() throws {
+    let outputURL = URL(fileURLWithPath: "/tmp/remindctl-timeout-output.txt")
+    let timeoutError = ProcessExecutionError.timedOut(
+      executablePath: "/usr/bin/shortcuts",
+      arguments: ["run", ShortcutTagMutation.shortcutName],
+      timeout: ShortcutTagMutation.timeout,
+      terminationStatus: 15
+    )
+    let error = ShortcutProcessErrorFormatter.timeout(
+      shortcutName: ShortcutTagMutation.shortcutName,
+      category: "tag mutation",
+      timeout: ShortcutTagMutation.timeout,
+      outputURL: outputURL,
+      underlyingError: timeoutError,
+      installGuidance: "Install the tag mutation helper and see the README."
+    )
+
+    let message = try #require(error.errorDescription)
+    #expect(message.contains("remindctl - Mutate Tags"))
+    #expect(message.contains("tag mutation"))
+    #expect(message.contains("120s"))
+    #expect(message.contains(outputURL.path))
+    #expect(message.contains("output_file_exists=false"))
+  }
+
   @Test("Mutation target keeps the native reminder and canonical managed IDs")
   func mutationTargetCarriesIdentifiers() {
     let target = ReminderMutationTarget(

@@ -145,6 +145,9 @@ struct ShortcutTagMutationResponse: Decodable, Sendable, Equatable {
 
 enum ShortcutTagMutation {
   static let shortcutName = "remindctl - Mutate Tags"
+  static let timeout: TimeInterval = 120
+  private static let category = "tag mutation"
+  private static let installGuidance = "Install the tag mutation helper and see the README."
 
   static func requests(
     for operations: [ReminderTagMutationOperation],
@@ -216,19 +219,37 @@ enum ShortcutTagMutation {
       try? FileManager.default.removeItem(at: runFiles.directoryURL)
     }
 
-    let result = try ProcessExecutor.run(
-      executableURL: URL(fileURLWithPath: "/usr/bin/shortcuts"),
-      arguments: shortcutsArguments(outputPath: runFiles.outputURL.path),
-      stdin: encodedRequest
-    )
+    let result: ProcessResult
+    do {
+      result = try ProcessExecutor.run(
+        executableURL: URL(fileURLWithPath: "/usr/bin/shortcuts"),
+        arguments: shortcutsArguments(outputPath: runFiles.outputURL.path),
+        stdin: encodedRequest,
+        timeout: timeout
+      )
+    } catch let error as ProcessExecutionError {
+      throw ShortcutProcessErrorFormatter.timeout(
+        shortcutName: shortcutName,
+        category: category,
+        timeout: timeout,
+        outputURL: runFiles.outputURL,
+        underlyingError: error,
+        installGuidance: installGuidance
+      )
+    } catch {
+      throw error
+    }
 
     if result.status != 0 {
-      throw processFailure(result)
+      throw processFailure(result, outputURL: runFiles.outputURL)
     }
 
     guard FileManager.default.fileExists(atPath: runFiles.outputURL.path) else {
-      throw RemindCoreError.operationFailed(
-        "Shortcut \"\(shortcutName)\" returned no output file. Install the tag mutation helper and see the README."
+      throw ShortcutProcessErrorFormatter.noOutputFile(
+        shortcutName: shortcutName,
+        category: category,
+        outputURL: runFiles.outputURL,
+        installGuidance: installGuidance
       )
     }
 
@@ -256,7 +277,7 @@ enum ShortcutTagMutation {
     let output = rawOutput.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !output.isEmpty else {
       throw RemindCoreError.operationFailed(
-        "Shortcut \"\(shortcutName)\" returned no data. Install the tag mutation helper and see the README."
+        "Shortcut \"\(shortcutName)\" returned no data. \(installGuidance)"
       )
     }
 
@@ -264,25 +285,19 @@ enum ShortcutTagMutation {
       return try JSONDecoder().decode(ShortcutTagMutationResponse.self, from: Data(output.utf8))
     } catch {
       throw RemindCoreError.operationFailed(
-        "Shortcut \"\(shortcutName)\" returned invalid JSON. Install the tag mutation helper and see the README."
+        "Shortcut \"\(shortcutName)\" returned invalid JSON. \(installGuidance)"
       )
     }
   }
 
-  private static func processFailure(_ result: ProcessResult) -> Error {
-    let combined = [result.stderr, result.stdout]
-      .joined(separator: "\n")
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-
-    if combined.contains("Can’t get shortcut") || combined.contains("Can't get shortcut") {
-      return RemindCoreError.operationFailed(
-        "Shortcut \"\(shortcutName)\" is required for tag mutation. Install the helper shortcut and see the README."
-      )
-    }
-
-    let detail = combined.isEmpty ? "unknown error" : combined
-    return RemindCoreError.operationFailed(
-      "Shortcut \"\(shortcutName)\" failed: \(detail)"
+  private static func processFailure(_ result: ProcessResult, outputURL: URL) -> Error {
+    ShortcutProcessErrorFormatter.processFailure(
+      shortcutName: shortcutName,
+      category: category,
+      result: result,
+      outputURL: outputURL,
+      missingShortcutGuidance: "Shortcut \"\(shortcutName)\" is required for tag mutation. \(installGuidance)",
+      installGuidance: installGuidance
     )
   }
 }

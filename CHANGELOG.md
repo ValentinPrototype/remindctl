@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 - 2026-04-21
+- Add timeouts for live Shortcut execution so hung helpers fail with actionable diagnostics instead of blocking forever
+- Improve Shortcut process errors with shortcut name, operation category, timeout duration, output path, and output file state
+- Harden process output capture to avoid pipe deadlocks during Shortcut and CLI test execution
+
 ## 0.3.0 - 2026-04-21
 - Add GTD project commands for project creation, child step creation, attaching reminders, and project display
 - Add Shortcut-backed true Reminders hierarchy mutation via `remindctl - Mutate Hierarchy`

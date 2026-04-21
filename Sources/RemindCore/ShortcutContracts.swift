@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public enum ShortcutContractValidationError: LocalizedError, Equatable {
@@ -322,11 +323,14 @@ public struct ShortcutContractRunner {
     return try ShortcutContractValidator.validate(data: data, expectedContractID: contractID)
   }
 
-  public func runLive(contractID: ShortcutContractID) throws -> ValidatedShortcutContractPayload {
+  public func runLive(contractID: ShortcutContractID, timeout: TimeInterval = 60) throws -> ValidatedShortcutContractPayload {
     let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "remindctl-gtd-\(UUID().uuidString).json",
       isDirectory: false
     )
+    defer {
+      try? FileManager.default.removeItem(at: outputURL)
+    }
 
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -340,29 +344,89 @@ public struct ShortcutContractRunner {
       "public.json",
     ]
 
+    let outputPipe = Pipe()
     let errorPipe = Pipe()
+    let stdoutReader = ShortcutContractPipeReader(fileHandle: outputPipe.fileHandleForReading)
+    let stderrReader = ShortcutContractPipeReader(fileHandle: errorPipe.fileHandleForReading)
+    let termination = DispatchSemaphore(value: 0)
+    process.standardOutput = outputPipe
     process.standardError = errorPipe
+    process.terminationHandler = { _ in
+      termination.signal()
+    }
 
     do {
       try process.run()
-      process.waitUntilExit()
     } catch {
       throw RemindCoreError.operationFailed("Failed to launch shortcuts for \(contractID.rawValue): \(error.localizedDescription)")
     }
 
-    defer {
-      try? FileManager.default.removeItem(at: outputURL)
+    if termination.wait(timeout: .now() + timeout) == .timedOut {
+      process.terminate()
+      if termination.wait(timeout: .now() + .seconds(2)) == .timedOut {
+        kill(process.processIdentifier, SIGKILL)
+        _ = termination.wait(timeout: .now() + .seconds(1))
+      }
+      let stdout = String(decoding: stdoutReader.waitForData(), as: UTF8.self)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let stderr = String(decoding: stderrReader.waitForData(), as: UTF8.self)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let outputExists = FileManager.default.fileExists(atPath: outputURL.path)
+      let status = process.isRunning ? "still running after terminate" : "\(process.terminationStatus)"
+      throw RemindCoreError.operationFailed(
+        """
+        Shortcut execution timed out for \(contractID.rawValue) after \(formatShortcutTimeout(timeout))s. \
+        shortcut="\(contractID.deployedShortcutName)" output_path=\(outputURL.path) output_file_exists=\(outputExists) termination_status=\(status). \
+        stdout=\(stdout.isEmpty ? "<empty>" : stdout) stderr=\(stderr.isEmpty ? "<empty>" : stderr)
+        """
+      )
     }
 
+    let stdout = String(decoding: stdoutReader.waitForData(), as: UTF8.self)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let stderr = String(decoding: stderrReader.waitForData(), as: UTF8.self)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+
     if process.terminationStatus != 0 {
-      let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-      let stderr = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       throw RemindCoreError.operationFailed(
-        "Shortcut execution failed for \(contractID.rawValue): \(stderr.isEmpty ? "unknown error" : stderr)"
+        "Shortcut execution failed for \(contractID.rawValue): \(stderr.isEmpty ? stdout.isEmpty ? "unknown error" : stdout : stderr)"
+      )
+    }
+
+    guard FileManager.default.fileExists(atPath: outputURL.path) else {
+      throw RemindCoreError.operationFailed(
+        "Shortcut execution produced no output for \(contractID.rawValue). shortcut=\"\(contractID.deployedShortcutName)\" output_path=\(outputURL.path) output_file_exists=false"
       )
     }
 
     let data = try Data(contentsOf: outputURL)
     return try ShortcutContractValidator.validate(data: data, expectedContractID: contractID)
+  }
+}
+
+private func formatShortcutTimeout(_ timeout: TimeInterval) -> String {
+  if timeout.rounded() == timeout {
+    return "\(Int(timeout))"
+  }
+  return String(format: "%.3f", timeout)
+}
+
+private final class ShortcutContractPipeReader: @unchecked Sendable {
+  private let group = DispatchGroup()
+  private let queue: DispatchQueue
+  private var data = Data()
+
+  init(fileHandle: FileHandle) {
+    queue = DispatchQueue(label: "remindctl.shortcut-contract-pipe-reader.\(UUID().uuidString)")
+    group.enter()
+    queue.async { [self] in
+      data = fileHandle.readDataToEndOfFile()
+      group.leave()
+    }
+  }
+
+  func waitForData() -> Data {
+    group.wait()
+    return data
   }
 }

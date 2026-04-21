@@ -212,6 +212,8 @@ enum ShortcutLiveTestSupport {
   ) async throws -> CapturedCommandResult {
     let stdoutPipe = Pipe()
     let stderrPipe = Pipe()
+    let stdoutReader = PipeOutputReader(fileHandle: stdoutPipe.fileHandleForReading)
+    let stderrReader = PipeOutputReader(fileHandle: stderrPipe.fileHandleForReading)
     let savedStdout = dup(STDOUT_FILENO)
     let savedStderr = dup(STDERR_FILENO)
     precondition(savedStdout != -1 && savedStderr != -1, "Failed to duplicate standard file descriptors")
@@ -221,19 +223,11 @@ enum ShortcutLiveTestSupport {
     dup2(stdoutPipe.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
     dup2(stderrPipe.fileHandleForWriting.fileDescriptor, STDERR_FILENO)
 
-    let exitCode: Int32
+    let result: Result<Int32, Error>
     do {
-      exitCode = try await operation()
+      result = .success(try await operation())
     } catch {
-      fflush(stdout)
-      fflush(stderr)
-      dup2(savedStdout, STDOUT_FILENO)
-      dup2(savedStderr, STDERR_FILENO)
-      close(savedStdout)
-      close(savedStderr)
-      try? stdoutPipe.fileHandleForWriting.close()
-      try? stderrPipe.fileHandleForWriting.close()
-      throw error
+      result = .failure(error)
     }
 
     fflush(stdout)
@@ -246,13 +240,35 @@ enum ShortcutLiveTestSupport {
     try? stdoutPipe.fileHandleForWriting.close()
     try? stderrPipe.fileHandleForWriting.close()
 
-    let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-    let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+    let stdoutData = stdoutReader.waitForData()
+    let stderrData = stderrReader.waitForData()
+
+    let exitCode = try result.get()
 
     return CapturedCommandResult(
       exitCode: exitCode,
       stdout: String(decoding: stdoutData, as: UTF8.self),
       stderr: String(decoding: stderrData, as: UTF8.self)
     )
+  }
+}
+
+private final class PipeOutputReader: @unchecked Sendable {
+  private let group = DispatchGroup()
+  private let queue: DispatchQueue
+  private var data = Data()
+
+  init(fileHandle: FileHandle) {
+    queue = DispatchQueue(label: "remindctl.tests.pipe-output-reader.\(UUID().uuidString)")
+    group.enter()
+    queue.async { [self] in
+      data = fileHandle.readDataToEndOfFile()
+      group.leave()
+    }
+  }
+
+  func waitForData() -> Data {
+    group.wait()
+    return data
   }
 }

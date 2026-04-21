@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 - 2026-04-21
+- Add GTD project commands for project creation, child step creation, attaching reminders, and project display
+- Add Shortcut-backed true Reminders hierarchy mutation via `remindctl - Mutate Hierarchy`
+- Add `sync --gtd` helper ingestion for GTD tags, project hierarchy, and the local SQLite mirror
+- Add mirror-backed `project health` and top-level `review weekly`
+- Harden tag and hierarchy Shortcut contracts with stricter success validation and live integration coverage
+- Add fixture-backed mirror review tests and live project health E2E verification
+
 ## 0.2.0 - 2026-04-19
 - Add Shortcut-backed reminder tag search and tag mutation
 - Ship stable Shortcut assets for `remindctl - Search By Tag` and `remindctl - Mutate Tags`

@@ -28,17 +28,41 @@ make check                     # lint + test + coverage gate
 - macOS 14+ (Sonoma or later)
 - Swift 6.2+
 - Reminders permission (System Settings → Privacy & Security → Reminders)
+- Installed Apple Shortcut helpers for tag search, tag mutation, and hierarchy mutation
 
-## Tag Search Setup
-Tag search is powered by an Apple Shortcut helper. The transport shortcut must be installed in the
-Shortcuts app with this exact name:
+## Shortcut Setup And Doctor
+Shortcut-backed features depend on three Apple Shortcut helpers installed in the Shortcuts app with these exact names:
 
-`remindctl - Search By Tag`
+- `remindctl - Search By Tag`
+- `remindctl - Mutate Tags`
+- `remindctl - Mutate Hierarchy`
 
 Install steps:
-- Open [Support/Shortcuts/remindctl - Search By Tag.shortcut](/Users/vk/work/openclaw/remindctl/Support/Shortcuts/remindctl%20-%20Search%20By%20Tag.shortcut) in Finder, or drag it into the Shortcuts app.
+- From the repo, run `remindctl shortcuts install` to open the bundled `.shortcut` files, or open the files in [Support/Shortcuts](/Users/vk/work/openclaw/remindctl/Support/Shortcuts) manually.
 - Click `Add Shortcut` when macOS asks to import it.
-- Do not rename the shortcut after import.
+- Do not rename the shortcuts after import.
+- Delete numbered duplicate copies such as `remindctl - Mutate Tags 1`; `remindctl` invokes the exact canonical names above.
+
+Check local Shortcut hygiene and plan safe updates with:
+
+```bash
+remindctl doctor shortcuts
+remindctl doctor shortcuts --json
+remindctl shortcuts update --dry-run
+```
+
+`remindctl shortcuts install` and `remindctl shortcuts update` intentionally refuse to open the bundled assets when
+canonical helpers or numbered copies are already installed. Delete the listed helpers in Shortcuts.app first, then rerun
+the command. This avoids macOS importing replacements as `... 1` duplicates. Use `--open-anyway` only when you
+intentionally want duplicate imports.
+
+First runs may trigger macOS Shortcuts and Reminders permission prompts. Run the doctor command and one interactive
+live command before relying on automation so permission dialogs can be approved. Search helpers use a `60s` timeout;
+tag and hierarchy mutation helpers use `120s` timeouts. Hierarchy mutation can still take roughly `10-40s` because it
+goes through Shortcuts, Reminders, and iCloud state.
+
+## Tag Search Setup
+Tag search is powered by `remindctl - Search By Tag`.
 
 Once installed, tag search works like this:
 
@@ -52,10 +76,7 @@ If the shortcut is missing or renamed, `remindctl` fails with a setup error expl
 the helper shortcut is required for `--tag` searches.
 
 ## Tag Mutation Setup
-True tag mutation is powered by a separate Apple Shortcut helper. The helper must be installed in the
-Shortcuts app with this exact name:
-
-`remindctl - Mutate Tags`
+True tag mutation is powered by `remindctl - Mutate Tags`.
 
 Command usage:
 
@@ -80,10 +101,7 @@ REMINDCTL_RUN_LIVE_SHORTCUT_TESTS=1 REMINDCTL_RUN_REMINDER_E2E_TESTS=1 swift tes
 Default `swift test` does not invoke the installed Shortcuts app helpers.
 
 ## Project Hierarchy Setup
-True sub-reminder mutation is powered by a separate Apple Shortcut helper. The helper must be installed in the
-Shortcuts app with this exact name:
-
-`remindctl - Mutate Hierarchy`
+True sub-reminder mutation is powered by `remindctl - Mutate Hierarchy`.
 
 Command usage:
 
@@ -163,6 +181,8 @@ remindctl complete 1 2 3
 remindctl delete 4A83 --force
 remindctl status                # permission status
 remindctl authorize             # request permissions
+remindctl doctor shortcuts      # validate Shortcut helper installation
+remindctl shortcuts update      # safely open replacement Shortcut assets after old copies are deleted
 ```
 
 ## Output formats

@@ -61,3 +61,7 @@ The existing helper Shortcut:
 - `remindctl - Mutate Hierarchy`
 
 is the current transport/reference Shortcut set for live CLI behavior. It is not the full GTD contract catalog and should not be used as the canonical identity model.
+
+Run `remindctl doctor shortcuts` after import to verify that the canonical helper names are installed and to find numbered duplicate copies such as `remindctl - Mutate Tags 1`.
+
+Use `remindctl shortcuts install` for first-time import and `remindctl shortcuts update --dry-run` before replacing helpers. The assisted updater blocks when existing helpers would cause macOS to import replacements as numbered duplicates; delete the listed helpers in Shortcuts.app, then rerun `remindctl shortcuts update`.

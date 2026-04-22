@@ -173,6 +173,46 @@ enum OutputRenderer {
     }
   }
 
+  static func printShortcutDoctor(_ report: ShortcutDoctorReport, format: OutputFormat) {
+    switch format {
+    case .standard:
+      printLines(renderShortcutDoctorStandard(report))
+    case .plain:
+      printLines(renderShortcutDoctorPlain(report))
+    case .json:
+      printJSON(report)
+    case .quiet:
+      switch report.status {
+      case .ok:
+        Swift.print("0")
+      case .warning:
+        Swift.print("1")
+      case .failed:
+        Swift.print("2")
+      }
+    }
+  }
+
+  static func printShortcutInstallPlan(_ plan: ShortcutInstallPlan, format: OutputFormat) {
+    switch format {
+    case .standard:
+      printLines(renderShortcutInstallPlanStandard(plan))
+    case .plain:
+      printLines(renderShortcutInstallPlanPlain(plan))
+    case .json:
+      printJSON(plan)
+    case .quiet:
+      switch plan.status {
+      case .ready, .opened:
+        Swift.print("0")
+      case .blocked:
+        Swift.print("1")
+      case .failed:
+        Swift.print("2")
+      }
+    }
+  }
+
   static func printMirrorSyncSummary(_ summary: MirrorSyncSummary, format: OutputFormat) {
     switch format {
     case .standard:
@@ -376,6 +416,71 @@ enum OutputRenderer {
         "\(summary.oldEmptyNoteCount)",
       ].joined(separator: "\t"),
     ]
+  }
+
+  static func renderShortcutDoctorStandard(_ report: ShortcutDoctorReport) -> [String] {
+    var lines = ["Shortcut doctor status=\(report.status.rawValue)"]
+    for helper in report.requiredHelpers {
+      let state = helper.installed ? "ok" : "missing"
+      let duplicateSuffix = helper.duplicateNames.isEmpty
+        ? ""
+        : " duplicates=\(helper.duplicateNames.joined(separator: ", "))"
+      lines.append("[\(state)] \(helper.name) category=\(helper.category) timeout=\(helper.timeoutSeconds)s\(duplicateSuffix)")
+    }
+    lines.append(contentsOf: report.warnings.map { "Warning: \($0)" })
+    lines.append(contentsOf: report.errors.map { "Error: \($0)" })
+    lines.append(contentsOf: report.notes.map { "Note: \($0)" })
+    return lines
+  }
+
+  static func renderShortcutDoctorPlain(_ report: ShortcutDoctorReport) -> [String] {
+    report.requiredHelpers.map { helper in
+      [
+        report.status.rawValue,
+        helper.installed ? "installed" : "missing",
+        helper.category,
+        "\(helper.timeoutSeconds)",
+        helper.duplicateNames.joined(separator: ","),
+        helper.name,
+      ].joined(separator: "\t")
+    }
+  }
+
+  static func renderShortcutInstallPlanStandard(_ plan: ShortcutInstallPlan) -> [String] {
+    var lines = [
+      "Shortcut \(plan.action.rawValue) status=\(plan.status.rawValue)",
+      "Assets: \(plan.assetDirectory)",
+    ]
+
+    for asset in plan.assets {
+      lines.append("[\(asset.exists ? "ok" : "missing")] \(asset.helperName) — \(asset.path)")
+    }
+
+    if plan.existingHelperNames.isEmpty == false {
+      lines.append("Existing canonical helpers: \(plan.existingHelperNames.joined(separator: ", "))")
+    }
+    if plan.duplicateHelperNames.isEmpty == false {
+      lines.append("Duplicate helpers: \(plan.duplicateHelperNames.joined(separator: ", "))")
+    }
+    if plan.openedPaths.isEmpty == false {
+      lines.append("Opened assets: \(plan.openedPaths.joined(separator: ", "))")
+    }
+    lines.append(contentsOf: plan.instructions.map { "Instruction: \($0)" })
+    lines.append(contentsOf: plan.doctor.warnings.map { "Warning: \($0)" })
+    lines.append(contentsOf: plan.doctor.errors.map { "Error: \($0)" })
+    return lines
+  }
+
+  static func renderShortcutInstallPlanPlain(_ plan: ShortcutInstallPlan) -> [String] {
+    plan.assets.map { asset in
+      [
+        plan.action.rawValue,
+        plan.status.rawValue,
+        asset.exists ? "asset-ok" : "asset-missing",
+        asset.helperName,
+        asset.path,
+      ].joined(separator: "\t")
+    }
   }
 
   private static func renderRemindersStandard<T: ReminderDisplayItem>(_ reminders: [T]) -> [String] {

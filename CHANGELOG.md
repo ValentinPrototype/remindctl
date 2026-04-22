@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 - 2026-04-22
+- Add `remindctl doctor shortcuts` to diagnose installed helper names and numbered duplicate Shortcuts
+- Add `remindctl shortcuts install|update` as a safe assisted installer that avoids accidental duplicate imports
+- Document first-run Shortcut permission prompts, duplicate cleanup, and expected live helper latency
+
 ## 0.3.1 - 2026-04-21
 - Add timeouts for live Shortcut execution so hung helpers fail with actionable diagnostics instead of blocking forever
 - Improve Shortcut process errors with shortcut name, operation category, timeout duration, output path, and output file state

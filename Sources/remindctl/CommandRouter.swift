@@ -22,8 +22,10 @@ struct CommandRouter {
       GateCommand.spec,
       SyncCommand.spec,
       QueryCommand.spec,
+      ShortcutsCommand.spec,
       StatusCommand.spec,
       AuthorizeCommand.spec,
+      DoctorCommand.spec,
     ]
     let descriptor = CommandDescriptor(
       name: rootName,

@@ -40,6 +40,36 @@ The Shortcut team does not own canonicalization.
 - Core logic refers to contract IDs, not human Shortcut names.
 - A single adapter layer maps contract IDs to deployed Shortcut names.
 - Shipped Shortcut names must stay stable once published.
+- Installed transport helpers must use the exact canonical names: `remindctl - Search By Tag`, `remindctl - Mutate Tags`, and `remindctl - Mutate Hierarchy`.
+- Numbered duplicate copies such as `remindctl - Mutate Tags 1` should be deleted after import. The CLI invokes exact names, so duplicate copies are not used, but they make manual edits and exports ambiguous.
+
+## Local Doctor
+
+Use the CLI doctor before live Shortcut work:
+
+```bash
+remindctl doctor shortcuts
+remindctl doctor shortcuts --json
+remindctl shortcuts update --dry-run
+```
+
+The doctor verifies that canonical helper names are installed and reports numbered duplicate copies. It does not mutate Reminders.
+
+Use the assisted installer from the repo root:
+
+```bash
+remindctl shortcuts install
+remindctl shortcuts update
+```
+
+The install/update command opens bundled `.shortcut` assets only when doing so should not create numbered duplicate imports. If canonical helpers or duplicate copies already exist, it blocks and prints the exact Shortcuts to delete first. macOS does not provide a reliable public CLI command for replacing or deleting installed Shortcuts, so the deletion step remains manual in Shortcuts.app.
+
+First live runs may still pause on macOS Shortcuts or Reminders permission dialogs. Run setup checks interactively once before using project automation or scheduled jobs.
+
+Expected live helper timing:
+- Tag/search helpers are usually fast, with a `60s` search timeout.
+- Tag mutation has a `120s` timeout.
+- Hierarchy mutation has a `120s` timeout and may take roughly `10-40s` because it writes true Reminders subtasks through Shortcuts/iCloud.
 
 ## Notes And Canonical Identity
 
